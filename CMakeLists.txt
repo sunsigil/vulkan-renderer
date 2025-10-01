@@ -27,6 +27,7 @@ target_sources(main PRIVATE
 	src/ppm/ppm.cpp
 	src/obj/obj.cpp
 	
+	src/input.cpp
 	src/main.cpp)
 target_link_libraries(main m glfw Vulkan::Vulkan)
 target_compile_options(main PRIVATE -Wall -g -std=c++17)

@@ -5,12 +5,12 @@
 #include "device.h"
 #include "swapchain.h"
 #include "pipeline.h"
+#include "input.h"
 
 int main(int argc, const char * argv[])
 {	
 	try
 	{
-		//init
 		TOS_context context;
 		TOS_create_context(&context, 1280, 720, "Vulkan App");
 		TOS_device device;
@@ -24,9 +24,13 @@ int main(int argc, const char * argv[])
 		TOS_pipeline pipeline;
 		TOS_create_pipeline(&device, &swapchain, &pipeline, &mesh, &texture);
 
+		TOS_create_input_context(&context);
+
 		while(!glfwWindowShouldClose(context.window_handle))
 		{
-			glfwPollEvents();	
+			glfwPollEvents();
+			TOS_input_tick();
+
 			TOS_draw_frame(&context, &device, &swapchain, &pipeline);
 		}
 		vkDeviceWaitIdle(device.logical);
