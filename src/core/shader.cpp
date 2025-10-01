@@ -16,6 +16,7 @@ VkShaderModule TOS_load_shader(TOS_device* device, const char* path)
 	VkResult result = vkCreateShaderModule(device->logical, &create_info, nullptr, &shader_module);
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("TOS_load_shader: failed to create shader module");
-	
+		
+	TOS_unmap_file(file_data, file_size);
 	return shader_module;
 }
