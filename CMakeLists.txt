@@ -28,6 +28,15 @@ target_sources(main PRIVATE
 	src/obj/obj.cpp
 	
 	src/input.cpp
+
+	src/imgui/imgui_demo.cpp
+	src/imgui/imgui_draw.cpp
+	src/imgui/imgui_impl_glfw.cpp
+	src/imgui/imgui_impl_vulkan.cpp
+	src/imgui/imgui_tables.cpp
+	src/imgui/imgui_widgets.cpp
+	src/imgui/imgui.cpp
+
 	src/main.cpp)
 target_link_libraries(main m glfw Vulkan::Vulkan)
 target_compile_options(main PRIVATE -Wall -g -std=c++17)

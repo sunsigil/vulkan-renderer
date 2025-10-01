@@ -46,19 +46,3 @@ void TOS_create_pipeline
 );
 
 void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline);
-
-void TOS_update_uniforms(TOS_swapchain* swapchain, TOS_pipeline* pipeline);
-
-void TOS_record_render_commands
-(
-	TOS_swapchain* swapchain, TOS_pipeline* pipeline,
-	uint32_t image_index
-);
-
-void TOS_draw_frame
-(
-	TOS_context* context,
-	TOS_device* device,
-	TOS_swapchain* swapchain,
-	TOS_pipeline* pipeline
-);
