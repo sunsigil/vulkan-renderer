@@ -11,17 +11,18 @@ find_package(Vulkan REQUIRED)
 
 target_include_directories(main PRIVATE
 	${Vulkan_INCLUDE_DIRS}
+	src/core
 	src)
 	
 target_sources(main PRIVATE
-	src/context.cpp
-	src/device.cpp
-	src/memory.cpp
-	src/pipeline.cpp
-	src/shader.cpp
-	src/swapchain.cpp
-	src/textures.cpp
-	src/vertices.cpp
+	src/core/context.cpp
+	src/core/device.cpp
+	src/core/memory.cpp
+	src/core/pipeline.cpp
+	src/core/shader.cpp
+	src/core/swapchain.cpp
+	src/core/textures.cpp
+	src/core/vertices.cpp
 
 	src/ppm/ppm.cpp
 	src/obj/obj.cpp
