@@ -261,9 +261,9 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 		VK_COLOR_COMPONENT_G_BIT |
 		VK_COLOR_COMPONENT_B_BIT |
 		VK_COLOR_COMPONENT_A_BIT;
-	colour_blend_attachment.blendEnable = VK_FALSE;
-	colour_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-	colour_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colour_blend_attachment.blendEnable = VK_TRUE;
+	colour_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colour_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 	colour_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
 	colour_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	colour_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;

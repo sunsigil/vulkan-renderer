@@ -21,7 +21,6 @@ static TOS_swapchain swapchain;
 static TOS_descriptor_pipeline descriptor_pipeline;
 static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
 static TOS_mesh mesh;
-static TOS_mesh mesh_2;
 static TOS_texture texture;
 
 static TOS_graphics_pipeline pipeline;
@@ -113,11 +112,6 @@ void record_render_commands(uint32_t image_index)
 	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
 	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh.indices.size(), 1, 0, 0, 0);
 
-	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh_2.vertex_buffer, &offset);
-	vkCmdBindIndexBuffer(command_buffer, mesh_2.index_buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
-	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh_2.indices.size(), 1, 0, 0, 0);
-
 	if(show_gui)
 	{
 		TOS_gui_begin_frame(command_buffer);
@@ -196,14 +190,13 @@ int main(int argc, const char * argv[])
 {	
 	try
 	{
-		TOS_create_context(&context, 1280, 720, "Vulkan App");
+		TOS_create_context(&context, 1280, 720, "Renderer");
 		TOS_create_device(&context, &device);
 		TOS_create_swapchain(&context, &device, &swapchain);
 
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 			TOS_create_uniform_buffer(&device, &uniform_buffers[i]);
 		TOS_load_mesh(&device, &mesh, "assets/meshes/viking_room.obj");
-		TOS_load_mesh(&device, &mesh_2, "assets/meshes/dragon.obj");
 		TOS_load_texture(&device, &texture, "assets/textures/viking_room.ppm");
 
 		TOS_create_descriptor_pipeline(&descriptor_pipeline, MAX_CONCURRENT_FRAMES);
@@ -238,7 +231,6 @@ int main(int argc, const char * argv[])
 		TOS_destroy_pipeline(&device, &pipeline);
 		TOS_destroy_descriptor_pipeline(&device, &descriptor_pipeline);
 		TOS_destroy_texture(&device, &texture);
-		TOS_destroy_mesh(&device, &mesh_2);
 		TOS_destroy_mesh(&device, &mesh);
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 			TOS_destroy_uniform_buffer(&device, &uniform_buffers[i]);
