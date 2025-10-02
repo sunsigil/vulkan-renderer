@@ -12,6 +12,7 @@ struct TOS_UBO
 	alignas(16) glm::mat4 M;
 	alignas(16) glm::mat4 V;
 	alignas(16) glm::mat4 P;
+	bool wireframe;
 };
 
 struct TOS_uniform_buffer

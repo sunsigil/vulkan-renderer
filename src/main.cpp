@@ -124,6 +124,7 @@ void record_render_commands(uint32_t image_index)
 		TOS_gui_begin_overlay();
 		ImGui::Text("[SHIFT]+[TAB] to toggle overlay");
 		ImGui::Text("FPS: %d", TOS_get_FPS());
+		ImGui::Checkbox("Wireframe", &uniforms.wireframe);
 		TOS_gui_end_overlay();
 		TOS_gui_end_frame();
 	}
