@@ -6,136 +6,141 @@
 #include <vulkan/vk_enum_string_helper.h>
 #include <iostream>
 
-void create_uniform_buffers(TOS_device* device, TOS_pipeline* pipeline)
+void TOS_create_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer)
 {
 	VkDeviceSize buffer_size = sizeof(TOS_UBO);
-	
-	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-	{
-		TOS_create_buffer
-		(
-			device, buffer_size,
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			pipeline->uniform_buffers[i], pipeline->uniform_memories[i]
-		);
-		vkMapMemory(device->logical, pipeline->uniform_memories[i], 0, buffer_size, 0, &pipeline->uniform_memories_mapped[i]);
-	}
+	TOS_create_buffer
+	(
+		device, buffer_size,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		buffer->buffer, buffer->memory
+	);
+	vkMapMemory(device->logical, buffer->memory, 0, buffer_size, 0, &buffer->pointer);
 }
 
-VkResult create_descriptor_set_layout(TOS_device* device, TOS_pipeline* pipeline)
+void TOS_destroy_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer)
 {
-	VkDescriptorSetLayoutBinding ubo_binding {};
-	ubo_binding.binding = 0;
-	ubo_binding.descriptorCount = 1;
-	ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	ubo_binding.pImmutableSamplers = nullptr;
-	
-	VkDescriptorSetLayoutBinding sampler_binding {};
-	sampler_binding.binding = 1;
-	sampler_binding.descriptorCount = 1;
-	sampler_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	sampler_binding.pImmutableSamplers = nullptr;
-	
-	VkDescriptorSetLayoutBinding bindings[] =
-	{
-		ubo_binding,
-		sampler_binding
-	};
-	
+	vkFreeMemory(device->logical, buffer->memory, nullptr);
+	vkDestroyBuffer(device->logical, buffer->buffer, nullptr);
+}
+
+void TOS_create_descriptor_pipeline(TOS_descriptor_pipeline* pipeline, uint32_t concurrency)
+{
+	pipeline->concurrency = concurrency;
+	pipeline->bindings = std::vector<VkDescriptorSetLayoutBinding>();
+	pipeline->layout = VK_NULL_HANDLE;
+	pipeline->pool = VK_NULL_HANDLE;
+	pipeline->sets = std::vector<VkDescriptorSet>();
+}
+
+void TOS_register_descriptor_binding(TOS_descriptor_pipeline* pipeline, VkDescriptorType type, VkShaderStageFlagBits stages)
+{
+	VkDescriptorSetLayoutBinding binding {};
+	binding.binding = pipeline->bindings.size();
+	binding.descriptorCount = 1;
+	binding.descriptorType = type;
+	binding.stageFlags = stages;
+	binding.pImmutableSamplers = nullptr;
+
+	pipeline->bindings.push_back(binding);
+	pipeline->sets.resize(pipeline->bindings.size());
+}
+
+void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptor_pipeline* pipeline)
+{
 	VkDescriptorSetLayoutCreateInfo create_info {};
 	create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	create_info.bindingCount = 2;
-	create_info.pBindings = bindings;
+	create_info.bindingCount = pipeline->bindings.size();
+	create_info.pBindings = pipeline->bindings.data();
 	
-	return vkCreateDescriptorSetLayout(device->logical, &create_info, nullptr, &pipeline->descriptor_set_layout);
+	VkResult result = vkCreateDescriptorSetLayout(device->logical, &create_info, nullptr, &pipeline->layout);
+	if(result != VK_SUCCESS)
+		throw std::runtime_error("TOS_create_descriptor_layout: failed to create descriptor set layout");
 }
 
-VkResult create_descriptor_pool(TOS_device* device, TOS_pipeline* pipeline)
+void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pipeline)
 {
-	VkDescriptorPoolSize ubo_pool_size {};
-	ubo_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	ubo_pool_size.descriptorCount = MAX_CONCURRENT_FRAMES;
-	
-	VkDescriptorPoolSize sampler_pool_size {};
-	sampler_pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	sampler_pool_size.descriptorCount = MAX_CONCURRENT_FRAMES;
-	
-	VkDescriptorPoolSize pool_sizes[] =
+	std::vector<VkDescriptorPoolSize> pool_sizes = std::vector<VkDescriptorPoolSize>();
+	pool_sizes.resize(pipeline->bindings.size());
+	for(int i = 0; i < pipeline->bindings.size(); i++)
 	{
-		ubo_pool_size,
-		sampler_pool_size
-	};
+		pool_sizes[i].type = pipeline->bindings[i].descriptorType;
+		pool_sizes[i].descriptorCount = pipeline->concurrency;
+	}
 	
 	VkDescriptorPoolCreateInfo create_info {};
 	create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	create_info.poolSizeCount = 2;
-	create_info.pPoolSizes = pool_sizes;
-	create_info.maxSets = MAX_CONCURRENT_FRAMES;
+	create_info.poolSizeCount = pool_sizes.size();
+	create_info.pPoolSizes = pool_sizes.data();
+	create_info.maxSets = pipeline->concurrency;
 	
-	return vkCreateDescriptorPool(device->logical, &create_info, nullptr, &pipeline->descriptor_pool);
+	VkResult result = vkCreateDescriptorPool(device->logical, &create_info, nullptr, &pipeline->pool);
+	if(result != VK_SUCCESS)
+		throw std::runtime_error("TOS_create_descriptor_pool: failed to create descriptor pool");
 }
-	
-VkResult create_descriptor_sets(TOS_device* device, TOS_pipeline* pipeline)
+
+void TOS_destroy_descriptor_pipeline(TOS_device* device, TOS_descriptor_pipeline* pipeline)
 {
-	VkDescriptorSetLayout layouts[MAX_CONCURRENT_FRAMES];
-	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-	{
-		layouts[i] = pipeline->descriptor_set_layout;
-	}
+	vkDestroyDescriptorSetLayout(device->logical, pipeline->layout, nullptr);
+	vkDestroyDescriptorPool(device->logical,  pipeline->pool, nullptr);
+}
+
+void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptor_pipeline* pipeline)
+{
+	std::vector<VkDescriptorSetLayout> layouts;
+	layouts.resize(pipeline->concurrency);
+	for(int i = 0; i < pipeline->concurrency; i++)
+		layouts[i] = pipeline->layout;
 	
 	VkDescriptorSetAllocateInfo alloc_info {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	alloc_info.descriptorPool = pipeline->descriptor_pool;
-	alloc_info.descriptorSetCount = MAX_CONCURRENT_FRAMES;
-	alloc_info.pSetLayouts = layouts;
+	alloc_info.descriptorPool = pipeline->pool;
+	alloc_info.descriptorSetCount = pipeline->concurrency;
+	alloc_info.pSetLayouts = layouts.data();
 	
-	pipeline->descriptor_sets.resize(MAX_CONCURRENT_FRAMES);
-	VkResult result = vkAllocateDescriptorSets(device->logical, &alloc_info, pipeline->descriptor_sets.data());
+	pipeline->sets.resize(pipeline->concurrency);
+	VkResult result = vkAllocateDescriptorSets(device->logical, &alloc_info, pipeline->sets.data());
 	if(result != VK_SUCCESS)
-		return result;
-	
-	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-	{
-		VkDescriptorBufferInfo buffer_info {};
-		buffer_info.buffer = pipeline->uniform_buffers[i];
-		buffer_info.offset = 0;
-		buffer_info.range = sizeof(TOS_UBO);
-		
-		VkWriteDescriptorSet buffer_write {};
-		buffer_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		buffer_write.dstSet = pipeline->descriptor_sets[i];
-		buffer_write.dstBinding = 0;
-		buffer_write.dstArrayElement = 0;
-		buffer_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		buffer_write.descriptorCount = 1;
-		buffer_write.pBufferInfo = &buffer_info;
-		
-		VkDescriptorImageInfo image_info {};
-		image_info.imageView = pipeline->texture->view;
-		image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		image_info.sampler = pipeline->texture->sampler;
-		
-		VkWriteDescriptorSet image_write {};
-		image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		image_write.dstSet = pipeline->descriptor_sets[i];
-		image_write.dstBinding = 1;
-		image_write.dstArrayElement = 0;
-		image_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		image_write.descriptorCount = 1;
-		image_write.pImageInfo = &image_info;
-		
-		VkWriteDescriptorSet writes[] =
-		{
-			buffer_write,
-			image_write
-		};
-		vkUpdateDescriptorSets(device->logical, 2, writes, 0, nullptr);
-	}
+		throw std::runtime_error("TOS_allocate_descriptor_sets: failed to allocate descriptor sets");
+}
 
-	return VK_SUCCESS;
+void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer)
+{
+	VkDescriptorBufferInfo info {};
+	info.buffer = buffer->buffer;
+	info.offset = 0;
+	info.range = sizeof(TOS_UBO);
+	
+	VkWriteDescriptorSet write {};
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write.dstSet = pipeline->sets[set_idx];
+	write.dstBinding = binding_idx;
+	write.dstArrayElement = 0;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	write.descriptorCount = 1;
+	write.pBufferInfo = &info;
+
+	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
+}
+
+void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture)
+{
+	VkDescriptorImageInfo info {};
+	info.imageView = texture->view;
+	info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	info.sampler = texture->sampler;
+	
+	VkWriteDescriptorSet write {};
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write.dstSet = pipeline->sets[set_idx];
+	write.dstBinding = binding_idx;
+	write.dstArrayElement = 0;
+	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write.descriptorCount = 1;
+	write.pImageInfo = &info;
+
+	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
 }
 
 VkResult create_render_command_buffers(TOS_device* device, TOS_pipeline* pipeline)
@@ -175,27 +180,8 @@ VkResult create_sync_primitives(TOS_device* device, TOS_pipeline* pipeline)
 	return VK_SUCCESS;
 }
 
-void TOS_create_pipeline
-(
-	TOS_device* device, TOS_swapchain* swapchain, TOS_pipeline* pipeline,
-	TOS_mesh* mesh, TOS_texture* texture
-)
+void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_pipeline* pipeline)
 {
-	pipeline->mesh = mesh;
-	pipeline->texture = texture;
-
-	create_uniform_buffers(device, pipeline);
-
-	VkResult result = create_descriptor_set_layout(device, pipeline);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("TOS_create_pipeline: failed to create descriptor set layout");
-	 result = create_descriptor_pool(device, pipeline);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("TOS_create_pipeline: failed to create descriptor pool");
-	result = create_descriptor_sets(device, pipeline);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("TOS_create_pipeline: failed to create descriptor sets");
-
 	VkShaderModule vert_shader = TOS_load_shader(device, "build/assets/shaders/standard.vert.spv");
 	VkShaderModule frag_shader = TOS_load_shader(device, "build/assets/shaders/standard.frag.spv");
 	
@@ -305,11 +291,11 @@ void TOS_create_pipeline
 	VkPipelineLayoutCreateInfo pipeline_layout_info {};
 	pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipeline_layout_info.setLayoutCount = 1;
-	pipeline_layout_info.pSetLayouts = &pipeline->descriptor_set_layout;
+	pipeline_layout_info.pSetLayouts = &descriptor_pipeline->layout;
 	pipeline_layout_info.pushConstantRangeCount = 0;
 	pipeline_layout_info.pPushConstantRanges = nullptr;
 	
-	result = vkCreatePipelineLayout(device->logical, &pipeline_layout_info, nullptr, &pipeline->pipeline_layout);
+	VkResult result = vkCreatePipelineLayout(device->logical, &pipeline_layout_info, nullptr, &pipeline->pipeline_layout);
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("TOS_create_pipeline: failed to create pipeline layout");
 	
@@ -369,15 +355,6 @@ void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline)
 		vkDestroySemaphore(device->logical,  pipeline->render_semaphores[i], nullptr);
 		vkDestroySemaphore(device->logical,  pipeline->image_semaphores[i], nullptr);
 	}
-	
-	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-	{
-		vkFreeMemory(device->logical,  pipeline->uniform_memories[i], nullptr);
-		vkDestroyBuffer(device->logical,  pipeline->uniform_buffers[i], nullptr);
-	}
-	
 	vkDestroyPipeline(device->logical, pipeline->handle, nullptr);
 	vkDestroyPipelineLayout(device->logical, pipeline->pipeline_layout, nullptr);
-	vkDestroyDescriptorSetLayout(device->logical, pipeline->descriptor_set_layout, nullptr);
-	vkDestroyDescriptorPool(device->logical,  pipeline->descriptor_pool, nullptr);
 }

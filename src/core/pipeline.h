@@ -14,19 +14,36 @@ struct TOS_UBO
 	alignas(16) glm::mat4 P;
 };
 
+struct TOS_uniform_buffer
+{
+	VkBuffer buffer;
+	VkDeviceMemory memory;
+	void* pointer;
+};
+
+void TOS_create_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
+void TOS_destroy_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
+
+struct TOS_descriptor_pipeline
+{
+	uint32_t concurrency;
+	std::vector<VkDescriptorSetLayoutBinding> bindings;
+	VkDescriptorSetLayout layout;
+	VkDescriptorPool pool;
+	std::vector<VkDescriptorSet> sets;
+};
+
+void TOS_create_descriptor_pipeline(TOS_descriptor_pipeline* pipeline, uint32_t concurrency);
+void TOS_destroy_descriptor_pipeline(TOS_device* device, TOS_descriptor_pipeline* pipeline);
+void TOS_register_descriptor_binding(TOS_descriptor_pipeline* pipeline, VkDescriptorType type, VkShaderStageFlagBits stages);
+void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptor_pipeline* pipeline);
+void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pipeline);
+void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptor_pipeline* pipeline);
+void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer);
+void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture);
+
 struct TOS_pipeline
 {
-	TOS_mesh* mesh;
-	TOS_texture* texture;
-
-	VkBuffer uniform_buffers[MAX_CONCURRENT_FRAMES];
-	VkDeviceMemory uniform_memories[MAX_CONCURRENT_FRAMES];
-	void* uniform_memories_mapped[MAX_CONCURRENT_FRAMES];
-
-	VkDescriptorSetLayout descriptor_set_layout;
-	VkDescriptorPool descriptor_pool;
-	std::vector<VkDescriptorSet> descriptor_sets;
-
 	VkPipelineLayout pipeline_layout;
 	VkPipeline handle;
 
@@ -39,10 +56,5 @@ struct TOS_pipeline
 	uint32_t frame_idx;
 };
 
-void TOS_create_pipeline
-(
-	TOS_device* device, TOS_swapchain* swapchain, TOS_pipeline* pipeline,
-	TOS_mesh* mesh, TOS_texture* texture
-);
-
+void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_pipeline* pipeline);
 void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline);

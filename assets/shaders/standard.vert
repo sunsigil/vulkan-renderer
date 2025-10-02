@@ -1,6 +1,6 @@
 #version 450
 
-layout(binding = 0) uniform UniformBufferObject
+layout(binding = 0) uniform TOS_UBO
 {
 	mat4 M;
 	mat4 V;
