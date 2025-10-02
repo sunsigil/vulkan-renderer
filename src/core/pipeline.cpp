@@ -143,7 +143,7 @@ void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipe
 	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
 }
 
-VkResult create_render_command_buffers(TOS_device* device, TOS_pipeline* pipeline)
+VkResult create_render_command_buffers(TOS_device* device, TOS_graphics_pipeline* pipeline)
 {
 	VkCommandBufferAllocateInfo alloc_info {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -154,7 +154,7 @@ VkResult create_render_command_buffers(TOS_device* device, TOS_pipeline* pipelin
 	return vkAllocateCommandBuffers(device->logical, &alloc_info, pipeline->render_command_buffers);
 }
 
-VkResult create_sync_primitives(TOS_device* device, TOS_pipeline* pipeline)
+VkResult create_sync_primitives(TOS_device* device, TOS_graphics_pipeline* pipeline)
 {
 	VkSemaphoreCreateInfo semaphore_info {};
 	semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -180,7 +180,7 @@ VkResult create_sync_primitives(TOS_device* device, TOS_pipeline* pipeline)
 	return VK_SUCCESS;
 }
 
-void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_pipeline* pipeline)
+void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_graphics_pipeline* pipeline)
 {
 	VkShaderModule vert_shader = TOS_load_shader(device, "build/assets/shaders/standard.vert.spv");
 	VkShaderModule frag_shader = TOS_load_shader(device, "build/assets/shaders/standard.frag.spv");
@@ -329,7 +329,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	create_info.basePipelineHandle = VK_NULL_HANDLE;
 	create_info.basePipelineIndex = 0;
 	
-	result = vkCreateGraphicsPipelines(device->logical, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline->handle);
+	result = vkCreateGraphicsPipelines(device->logical, VK_NULL_HANDLE, 1, &create_info, nullptr, &pipeline->pipeline);
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("TOS_create_pipeline: failed to create pipeline");
 	
@@ -347,7 +347,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	pipeline->frame_idx = 0;
 }
 
-void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline)
+void TOS_destroy_pipeline(TOS_device* device, TOS_graphics_pipeline* pipeline)
 {
 	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 	{
@@ -355,6 +355,6 @@ void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline)
 		vkDestroySemaphore(device->logical,  pipeline->render_semaphores[i], nullptr);
 		vkDestroySemaphore(device->logical,  pipeline->image_semaphores[i], nullptr);
 	}
-	vkDestroyPipeline(device->logical, pipeline->handle, nullptr);
+	vkDestroyPipeline(device->logical, pipeline->pipeline, nullptr);
 	vkDestroyPipelineLayout(device->logical, pipeline->pipeline_layout, nullptr);
 }

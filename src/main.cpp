@@ -17,11 +17,13 @@
 static TOS_context context;
 static TOS_device device;
 static TOS_swapchain swapchain;
+
 static TOS_descriptor_pipeline descriptor_pipeline;
 static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
 static TOS_mesh mesh;
 static TOS_texture texture;
-static TOS_pipeline pipeline;
+
+static TOS_graphics_pipeline pipeline;
 
 static TOS_UBO uniforms;
 static bool show_gui = false;
@@ -73,7 +75,7 @@ void begin_frame(VkCommandBuffer command_buffer, uint32_t image_index)
 	render_pass_info.pClearValues = clear_values;
 	vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 	
-	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 	
 	VkViewport viewport {};
 	viewport.x = 0.0f;
@@ -123,6 +125,66 @@ void record_render_commands(uint32_t image_index)
 	end_frame(command_buffer);
 }
 
+void render_tick()
+{
+	vkWaitForFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx], VK_TRUE, UINT64_MAX);
+	uint32_t image_idx;
+	VkResult result = vkAcquireNextImageKHR(device.logical, swapchain.handle, UINT64_MAX, pipeline.image_semaphores[pipeline.frame_idx], VK_NULL_HANDLE, &image_idx);
+	if(result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		TOS_rebuild_swapchain(&context, &device, &swapchain);
+		return;
+	}
+	else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+	{
+		throw std::runtime_error("TOS_draw_frame: failed to acquire image from swapchain");
+	}
+	vkResetFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx]);
+	
+	vkResetCommandBuffer(pipeline.render_command_buffers[pipeline.frame_idx], 0);
+	record_render_commands(image_idx);
+	
+	VkSubmitInfo submission {};
+	submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submission.commandBufferCount = 1;
+	submission.pCommandBuffers = &pipeline.render_command_buffers[pipeline.frame_idx];
+	
+	submission.waitSemaphoreCount = 1;
+	submission.pWaitSemaphores = &pipeline.image_semaphores[pipeline.frame_idx];
+	VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+	submission.pWaitDstStageMask = wait_stages;
+	
+	submission.signalSemaphoreCount = 1;
+	submission.pSignalSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
+	
+	result = vkQueueSubmit(device.queues.graphics, 1, &submission, pipeline.frame_fences[pipeline.frame_idx]);
+	if(result != VK_SUCCESS)
+		throw std::runtime_error("TOS_draw_frame: failed to submit command buffer");
+	
+	VkPresentInfoKHR presentation {};
+	presentation.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentation.waitSemaphoreCount = 1;
+	presentation.pWaitSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
+	
+	presentation.swapchainCount = 1;
+	presentation.pSwapchains = &swapchain.handle;
+	presentation.pImageIndices = &image_idx;
+	presentation.pResults = nullptr;
+	
+	result = vkQueuePresentKHR(device.queues.present, &presentation);
+	if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || (context.window_flags & TOS_WINDOW_FLAG_RESIZE))
+	{
+		TOS_rebuild_swapchain(&context, &device, &swapchain);
+		context.window_flags &= ~TOS_WINDOW_FLAG_RESIZE;
+	}
+	else if(result != VK_SUCCESS)
+	{
+		throw std::runtime_error("TOS_draw_frame: failed to present swapchain image");
+	}
+	
+	pipeline.frame_idx = (pipeline.frame_idx + 1) % MAX_CONCURRENT_FRAMES;
+}
+
 int main(int argc, const char * argv[])
 {	
 	try
@@ -157,64 +219,9 @@ int main(int argc, const char * argv[])
 		while(!glfwWindowShouldClose(context.window_handle))
 		{
 			glfwPollEvents();
+				
 			logic_tick();
-
-			vkWaitForFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx], VK_TRUE, UINT64_MAX);
-			uint32_t image_idx;
-			VkResult result = vkAcquireNextImageKHR(device.logical, swapchain.handle, UINT64_MAX, pipeline.image_semaphores[pipeline.frame_idx], VK_NULL_HANDLE, &image_idx);
-			if(result == VK_ERROR_OUT_OF_DATE_KHR)
-			{
-				TOS_rebuild_swapchain(&context, &device, &swapchain);
-				continue;
-			}
-			else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-			{
-				throw std::runtime_error("TOS_draw_frame: failed to acquire image from swapchain");
-			}
-			vkResetFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx]);
-			
-			vkResetCommandBuffer(pipeline.render_command_buffers[pipeline.frame_idx], 0);
-			record_render_commands(image_idx);
-			
-			VkSubmitInfo submission {};
-			submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-			submission.commandBufferCount = 1;
-			submission.pCommandBuffers = &pipeline.render_command_buffers[pipeline.frame_idx];
-			
-			submission.waitSemaphoreCount = 1;
-			submission.pWaitSemaphores = &pipeline.image_semaphores[pipeline.frame_idx];
-			VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-			submission.pWaitDstStageMask = wait_stages;
-			
-			submission.signalSemaphoreCount = 1;
-			submission.pSignalSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
-			
-			result = vkQueueSubmit(device.queues.graphics, 1, &submission, pipeline.frame_fences[pipeline.frame_idx]);
-			if(result != VK_SUCCESS)
-				throw std::runtime_error("TOS_draw_frame: failed to submit command buffer");
-			
-			VkPresentInfoKHR presentation {};
-			presentation.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-			presentation.waitSemaphoreCount = 1;
-			presentation.pWaitSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
-			
-			presentation.swapchainCount = 1;
-			presentation.pSwapchains = &swapchain.handle;
-			presentation.pImageIndices = &image_idx;
-			presentation.pResults = nullptr;
-			
-			result = vkQueuePresentKHR(device.queues.present, &presentation);
-			if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || (context.window_flags & TOS_WINDOW_FLAG_RESIZE))
-			{
-				TOS_rebuild_swapchain(&context, &device, &swapchain);
-				context.window_flags &= ~TOS_WINDOW_FLAG_RESIZE;
-			}
-			else if(result != VK_SUCCESS)
-			{
-				throw std::runtime_error("TOS_draw_frame: failed to present swapchain image");
-			}
-			
-			pipeline.frame_idx = (pipeline.frame_idx + 1) % MAX_CONCURRENT_FRAMES;
+			render_tick();
 		}
 		vkDeviceWaitIdle(device.logical);
 

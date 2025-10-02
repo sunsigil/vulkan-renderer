@@ -42,10 +42,10 @@ void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptor_pipeline* p
 void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer);
 void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture);
 
-struct TOS_pipeline
+struct TOS_graphics_pipeline
 {
 	VkPipelineLayout pipeline_layout;
-	VkPipeline handle;
+	VkPipeline pipeline;
 
 	VkCommandBuffer render_command_buffers[MAX_CONCURRENT_FRAMES];
 
@@ -56,5 +56,5 @@ struct TOS_pipeline
 	uint32_t frame_idx;
 };
 
-void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_pipeline* pipeline);
-void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline);
+void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_graphics_pipeline* pipeline);
+void TOS_destroy_pipeline(TOS_device* device, TOS_graphics_pipeline* pipeline);
