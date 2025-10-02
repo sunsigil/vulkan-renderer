@@ -7,38 +7,38 @@
 #include "swapchain.h"
 #include "pipeline.h"
 #include "input.h"
-#include <chrono>
-typedef std::chrono::time_point<std::chrono::high_resolution_clock> timepoint;
 #include "gui.h"
+#include "timing.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_vulkan.h"
 
-TOS_context context;
-TOS_device device;
-TOS_swapchain swapchain;
-TOS_descriptor_pipeline descriptor_pipeline;
-TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
-TOS_mesh mesh;
-TOS_texture texture;
-TOS_pipeline pipeline;
+static TOS_context context;
+static TOS_device device;
+static TOS_swapchain swapchain;
+static TOS_descriptor_pipeline descriptor_pipeline;
+static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
+static TOS_mesh mesh;
+static TOS_texture texture;
+static TOS_pipeline pipeline;
 
-TOS_UBO uniforms;
+static TOS_UBO uniforms;
+static bool show_gui = false;
 
 void logic_tick()
 {
-	static timepoint start_time = std::chrono::high_resolution_clock::now();
-	timepoint current_time = std::chrono::high_resolution_clock::now();
-	float dt = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-
+	TOS_timing_tick();
 	TOS_input_tick();
 	
-	uniforms.M = glm::rotate(glm::mat4(1.0f), dt * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	uniforms.M = glm::rotate(glm::mat4(1.0f), TOS_get_elapsed_time_s() * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	uniforms.V = glm::lookAt(glm::vec3(2, 2, 2), glm::vec3(0, 0, 0), glm::vec3(0.0f, 1.0f, 0.0f));
 	uniforms.P = glm::perspective(glm::radians(45.0f), (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 100.0f);
 	uniforms.P[1][1] *= -1.0f;
 	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
+
+	if(TOS_key_down(GLFW_KEY_LEFT_SHIFT) && TOS_key_pressed(GLFW_KEY_TAB))
+		show_gui = !show_gui;
 }
 
 void begin_frame(VkCommandBuffer command_buffer, uint32_t image_index)
@@ -110,9 +110,15 @@ void record_render_commands(uint32_t image_index)
 	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
 	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh.indices.size(), 1, 0, 0, 0);
 
-	TOS_gui_begin_frame(command_buffer);
-	ImGui::ShowDemoWindow();
-	TOS_gui_end_frame();
+	if(show_gui)
+	{
+		TOS_gui_begin_frame(command_buffer);
+		TOS_gui_begin_overlay();
+		ImGui::Text("[SHIFT]+[TAB] to toggle overlay");
+		ImGui::Text("FPS: %d", TOS_get_FPS());
+		TOS_gui_end_overlay();
+		TOS_gui_end_frame();
+	}
 
 	end_frame(command_buffer);
 }
@@ -144,6 +150,7 @@ int main(int argc, const char * argv[])
 
 		TOS_create_pipeline(&device, &swapchain, &descriptor_pipeline, &pipeline);
 
+		TOS_create_timing_context();
 		TOS_create_input_context(&context);
 		TOS_create_gui_context(&context, &device, &swapchain);
 

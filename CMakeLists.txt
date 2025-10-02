@@ -29,6 +29,7 @@ target_sources(main PRIVATE
 	
 	src/input.cpp
 	src/gui.cpp
+	src/timing.cpp
 
 	src/imgui/imgui_demo.cpp
 	src/imgui/imgui_draw.cpp

@@ -83,3 +83,23 @@ void TOS_gui_end_frame()
 	ImGui::Render();
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
 }
+
+void TOS_gui_begin_overlay()
+{
+	int flags =
+	ImGuiWindowFlags_NoSavedSettings |
+	ImGuiWindowFlags_NoMove |
+	ImGuiWindowFlags_NoResize |
+	ImGuiWindowFlags_NoResize |
+	ImGuiWindowFlags_NoCollapse |
+	ImGuiWindowFlags_NoBackground |
+	ImGuiWindowFlags_NoTitleBar |
+	ImGuiWindowFlags_NoBringToFrontOnFocus;
+	ImGui::SetNextWindowPos(ImVec2(0, 0));
+	ImGui::Begin("IMGUI Overlay", nullptr, flags);
+}
+
+void TOS_gui_end_overlay()
+{
+	ImGui::End();
+}
