@@ -3,7 +3,7 @@
 #include "obj/obj.h"
 #include "memory.h"
 
-bool TOS_Vertex::operator==(const TOS_Vertex& other) const
+bool TOS_vertex::operator==(const TOS_vertex& other) const
 {
 	return
 	position == other.position &&
@@ -14,7 +14,7 @@ VkVertexInputBindingDescription TOS_get_vertex_binding_description()
 {
 	VkVertexInputBindingDescription description {};
 	description.binding = 0;
-	description.stride = sizeof(TOS_Vertex);
+	description.stride = sizeof(TOS_vertex);
 	description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	return description;
 }
@@ -27,21 +27,21 @@ std::array<VkVertexInputAttributeDescription, 2> TOS_get_vertex_attribute_descri
 		.binding = 0,
 		.location = 0,
 		.format = VK_FORMAT_R32G32B32_SFLOAT,
-		.offset = offsetof(TOS_Vertex, position)
+		.offset = offsetof(TOS_vertex, position)
 	};
 	descriptions[1] =
 	{
 		.binding = 0,
 		.location = 1,
 		.format = VK_FORMAT_R32G32_SFLOAT,
-		.offset = offsetof(TOS_Vertex, uv)
+		.offset = offsetof(TOS_vertex, uv)
 	};
 	return descriptions;
 }
 
 void create_vertex_buffer(TOS_device* device, TOS_mesh* mesh)
 {
-	VkDeviceSize buffer_size = sizeof(TOS_Vertex) * mesh->vertices.size();
+	VkDeviceSize buffer_size = sizeof(TOS_vertex) * mesh->vertices.size();
 	
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_memory;
@@ -111,12 +111,22 @@ void create_index_buffer(TOS_device* device, TOS_mesh* mesh)
 	vkDestroyBuffer(device->logical, staging_buffer, nullptr);
 }
 
+void TOS_create_mesh(TOS_device* device, TOS_mesh* mesh, std::vector<TOS_vertex> vertices, std::vector<uint32_t> indices)
+{
+	mesh->vertices = vertices;
+	mesh->indices = indices;
+	create_vertex_buffer(device, mesh);
+	create_index_buffer(device, mesh);
+}
+
 void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path)
 {
 	TOS_OBJ obj;
 	TOS_OBJ_load(&obj, path);
 	
-	std::unordered_map<TOS_Vertex, uint32_t> unique_vertices;
+	std::vector<TOS_vertex> vertices;
+	std::vector<uint32_t> indices;
+	std::unordered_map<TOS_vertex, uint32_t> unique_vertices;
 
 	for(int f_idx = 0; f_idx < obj.f.size(); f_idx += 9)
 	{
@@ -141,7 +151,7 @@ void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path)
 				0, 0
 			};
 
-			TOS_Vertex vertex =
+			TOS_vertex vertex =
 			{
 				.position = v,
 				.uv = vt
@@ -149,15 +159,14 @@ void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path)
 			
 			if(unique_vertices.count(vertex) == 0)
 			{
-				unique_vertices[vertex] = (uint32_t) mesh->vertices.size();
-				mesh->vertices.push_back(vertex);
+				unique_vertices[vertex] = (uint32_t) vertices.size();
+				vertices.push_back(vertex);
 			}
-			mesh->indices.push_back(unique_vertices[vertex]);
+			indices.push_back(unique_vertices[vertex]);
 		}
 	}
 
-	create_vertex_buffer(device, mesh);
-	create_index_buffer(device, mesh);
+	TOS_create_mesh(device, mesh, vertices, indices);
 }
 
 void TOS_destroy_mesh(TOS_device* device, TOS_mesh* mesh)

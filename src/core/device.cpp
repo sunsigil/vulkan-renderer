@@ -16,8 +16,9 @@ TOS_queue_family_indices TOS_query_queue_families(TOS_context* context, VkPhysic
 {
 	uint32_t family_count;
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, nullptr);
-	VkQueueFamilyProperties family_properties[family_count];
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, family_properties);
+	std::vector<VkQueueFamilyProperties> family_properties;
+	family_properties.resize(family_count);
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, family_properties.data());
 	
 	TOS_queue_family_indices indices;
 	for(int i = 0; i < family_count; i++)
@@ -64,13 +65,21 @@ TOS_swapchain_support_details TOS_query_swapchain_support(TOS_context* context, 
 
 bool is_device_suitable(TOS_context* context, VkPhysicalDevice device)
 {
-	VkPhysicalDeviceProperties properties;
+	VkPhysicalDeviceProperties properties {};
 	vkGetPhysicalDeviceProperties(device, &properties);
-	
-	VkPhysicalDeviceFeatures features;
+
+	VkPhysicalDeviceFeatures features {};
 	vkGetPhysicalDeviceFeatures(device, &features);
 	if(!features.samplerAnisotropy)
 		return false;
+
+	VkPhysicalDeviceFeatures2 features2 {};
+	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR requested_fragment_shader_barycentric_features {};
+	requested_fragment_shader_barycentric_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR;
+	requested_fragment_shader_barycentric_features.fragmentShaderBarycentric = VK_TRUE;
+	features2.pNext = &requested_fragment_shader_barycentric_features;
+	vkGetPhysicalDeviceFeatures2(device, &features2);
 	
 	TOS_queue_family_indices queue_family_indices = TOS_query_queue_families(context, device);
 	if(!queue_family_indices.transfer.has_value())
@@ -84,7 +93,8 @@ bool is_device_suitable(TOS_context* context, VkPhysicalDevice device)
 	std::vector<const char*> required_extensions =
 	{
 		"VK_KHR_portability_subset",
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		"VK_KHR_fragment_shader_barycentric"
 	};
 	for(int i = 0; i < required_extensions.size(); i++)
 	{
@@ -117,8 +127,9 @@ VkResult select_physical_device(TOS_context* context, VkPhysicalDevice* device)
 	if(count <= 0)
 		return VK_ERROR_UNKNOWN;
 
-	VkPhysicalDevice devices[count];
-	vkEnumeratePhysicalDevices(context->instance, &count, devices);
+	std::vector<VkPhysicalDevice> devices;
+	devices.resize(count);
+	vkEnumeratePhysicalDevices(context->instance, &count, devices.data());
 	for(int i = 0; i < count; i++)
 	{
 		VkPhysicalDevice candidate = devices[i];
@@ -161,14 +172,20 @@ VkResult create_logical_device(TOS_context* context, VkPhysicalDevice physical, 
 	create_info.pQueueCreateInfos = queue_create_infos.data();
 	create_info.queueCreateInfoCount = (uint32_t) queue_create_infos.size();
 	
-	VkPhysicalDeviceFeatures device_features {};
-	device_features.samplerAnisotropy = VK_TRUE;
-	create_info.pEnabledFeatures = &device_features;
+	VkPhysicalDeviceFeatures2 features2 {};
+	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	features2.features.samplerAnisotropy = VK_TRUE;
+	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR requested_fragment_shader_barycentric_features {};
+	requested_fragment_shader_barycentric_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR;
+	requested_fragment_shader_barycentric_features.fragmentShaderBarycentric = VK_TRUE;
+	features2.pNext = &requested_fragment_shader_barycentric_features;
+	create_info.pNext = &features2;
 	
 	std::vector<const char*> required_extensions =
 	{
 		"VK_KHR_portability_subset",
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		"VK_KHR_fragment_shader_barycentric"
 	};
 	create_info.ppEnabledExtensionNames = required_extensions.data();
 	create_info.enabledExtensionCount = (uint32_t) required_extensions.size();

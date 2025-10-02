@@ -87,7 +87,8 @@ VkResult create_vulkan_instance(TOS_context* context)
 	
 	uint32_t available_layer_count;
 	vkEnumerateInstanceLayerProperties(&available_layer_count, nullptr);
-	VkLayerProperties available_layers[available_layer_count];
+	std::vector<VkLayerProperties> available_layers;
+	available_layers.resize(available_layer_count);
 	
 	for(int i = 0; i < required_layers.size(); i++)
 	{
