@@ -9,6 +9,7 @@
 #include "input.h"
 #include <chrono>
 typedef std::chrono::time_point<std::chrono::high_resolution_clock> timepoint;
+#include "gui.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
@@ -23,29 +24,29 @@ TOS_mesh mesh;
 TOS_texture texture;
 TOS_pipeline pipeline;
 
-void update_uniforms()
+TOS_UBO uniforms;
+
+void logic_tick()
 {
 	static timepoint start_time = std::chrono::high_resolution_clock::now();
 	timepoint current_time = std::chrono::high_resolution_clock::now();
-	float t = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+	float dt = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+	TOS_input_tick();
 	
-	TOS_UBO ubo {};
-	ubo.M = glm::rotate(glm::mat4(1.0f), t * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	ubo.V = glm::lookAt(glm::vec3(2, 2, 2), glm::vec3(0, 0, 0), glm::vec3(0.0f, 1.0f, 0.0f));
-	ubo.P = glm::perspective(glm::radians(45.0f), (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 100.0f);
-	ubo.P[1][1] *= -1.0f;
-	
-	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &ubo, sizeof(ubo));
+	uniforms.M = glm::rotate(glm::mat4(1.0f), dt * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	uniforms.V = glm::lookAt(glm::vec3(2, 2, 2), glm::vec3(0, 0, 0), glm::vec3(0.0f, 1.0f, 0.0f));
+	uniforms.P = glm::perspective(glm::radians(45.0f), (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 100.0f);
+	uniforms.P[1][1] *= -1.0f;
+	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
 }
 
-void record_render_commands(uint32_t image_index)
+void begin_frame(VkCommandBuffer command_buffer, uint32_t image_index)
 {
 	VkCommandBufferBeginInfo begin_info {};
 	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	begin_info.flags = 0;
 	begin_info.pInheritanceInfo = nullptr;
-
-	VkCommandBuffer command_buffer = pipeline.render_command_buffers[pipeline.frame_idx];
 	VkResult result = vkBeginCommandBuffer(command_buffer, &begin_info);
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("[ERROR] failed to begin recording render command buffer");
@@ -87,25 +88,33 @@ void record_render_commands(uint32_t image_index)
 	scissor.offset = {0, 0};
 	scissor.extent = swapchain.extent;
 	vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+}
+
+void end_frame(VkCommandBuffer command_buffer)
+{
+	vkCmdEndRenderPass(command_buffer);
+	VkResult result = vkEndCommandBuffer(command_buffer);
+	if(result != VK_SUCCESS)
+		throw std::runtime_error("[ERROR] failed to finish recording render command buffer");
+}
+
+void record_render_commands(uint32_t image_index)
+{
+	VkCommandBuffer command_buffer = pipeline.render_command_buffers[pipeline.frame_idx];
+
+	begin_frame(command_buffer, image_index);
 	
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh.vertex_buffer, &offset);
 	vkCmdBindIndexBuffer(command_buffer, mesh.index_buffer, 0, VK_INDEX_TYPE_UINT32);
 	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
-	
 	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh.indices.size(), 1, 0, 0, 0);
 
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
+	TOS_gui_begin_frame(command_buffer);
 	ImGui::ShowDemoWindow();
-	ImGui::Render();
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), pipeline.render_command_buffers[pipeline.frame_idx]);
+	TOS_gui_end_frame();
 
-	vkCmdEndRenderPass(command_buffer);
-	result = vkEndCommandBuffer(command_buffer);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("[ERROR] failed to finish recording render command buffer");
+	end_frame(command_buffer);
 }
 
 int main(int argc, const char * argv[])
@@ -136,58 +145,14 @@ int main(int argc, const char * argv[])
 		TOS_create_pipeline(&device, &swapchain, &descriptor_pipeline, &pipeline);
 
 		TOS_create_input_context(&context);
-
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-		[[maybe_unused]]
-		ImGuiIO& io = ImGui::GetIO();
-		ImGui::StyleColorsDark();
-
-		ImGui_ImplGlfw_InitForVulkan(context.window_handle, true);
-		ImGui_ImplVulkan_InitInfo init_info = {};
-		init_info.Instance = context.instance;
-		init_info.PhysicalDevice = device.physical;
-		init_info.Device = device.logical;
-		init_info.QueueFamily = TOS_query_queue_families(&context, device.physical).graphics.value();
-		init_info.Queue = device.queues.graphics;
-		init_info.PipelineCache = VK_NULL_HANDLE;
-
-		VkDescriptorPool imgui_descriptor_pool;
-		VkDescriptorPoolSize pool_sizes[] =
-        {
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE },
-        };
-        VkDescriptorPoolCreateInfo pool_info = {};
-        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pool_info.maxSets = 0;
-        for (VkDescriptorPoolSize& pool_size : pool_sizes)
-            pool_info.maxSets += pool_size.descriptorCount;
-        pool_info.poolSizeCount = (uint32_t) IM_ARRAYSIZE(pool_sizes);
-        pool_info.pPoolSizes = pool_sizes;
-        VkResult result = vkCreateDescriptorPool(device.logical, &pool_info, nullptr, &imgui_descriptor_pool);
-		if(result != VK_SUCCESS)
-			throw std::runtime_error("main: failed to create imgui descriptor pool");
-		init_info.DescriptorPool = imgui_descriptor_pool;
-
-		init_info.Allocator = nullptr;
-		init_info.MinImageCount = 2;
-		init_info.ImageCount = swapchain.images.size();
-		init_info.CheckVkResultFn = nullptr;
-
-		init_info.PipelineInfoMain.RenderPass = swapchain.render_pass;
-		init_info.PipelineInfoMain.Subpass = 0;
-		init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-
-		ImGui_ImplVulkan_Init(&init_info);
+		TOS_create_gui_context(&context, &device, &swapchain);
 
 		while(!glfwWindowShouldClose(context.window_handle))
 		{
 			glfwPollEvents();
-			TOS_input_tick();
+			logic_tick();
 
 			vkWaitForFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx], VK_TRUE, UINT64_MAX);
-		
 			uint32_t image_idx;
 			VkResult result = vkAcquireNextImageKHR(device.logical, swapchain.handle, UINT64_MAX, pipeline.image_semaphores[pipeline.frame_idx], VK_NULL_HANDLE, &image_idx);
 			if(result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -216,8 +181,6 @@ int main(int argc, const char * argv[])
 			
 			submission.signalSemaphoreCount = 1;
 			submission.pSignalSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
-			
-			update_uniforms();
 			
 			result = vkQueueSubmit(device.queues.graphics, 1, &submission, pipeline.frame_fences[pipeline.frame_idx]);
 			if(result != VK_SUCCESS)
@@ -248,10 +211,7 @@ int main(int argc, const char * argv[])
 		}
 		vkDeviceWaitIdle(device.logical);
 
-		ImGui_ImplVulkan_Shutdown();
-		ImGui_ImplGlfw_Shutdown();
-		ImGui::DestroyContext();
-		vkDestroyDescriptorPool(device.logical, imgui_descriptor_pool, nullptr);
+		TOS_destroy_gui_context();
 
 		TOS_destroy_pipeline(&device, &pipeline);
 		TOS_destroy_descriptor_pipeline(&device, &descriptor_pipeline);

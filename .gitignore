@@ -58,3 +58,4 @@ __pycache__/
 build/
 *.pdf
 !assets/meshes/*.obj
+imgui.ini

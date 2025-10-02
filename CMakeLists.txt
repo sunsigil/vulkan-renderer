@@ -28,6 +28,7 @@ target_sources(main PRIVATE
 	src/obj/obj.cpp
 	
 	src/input.cpp
+	src/gui.cpp
 
 	src/imgui/imgui_demo.cpp
 	src/imgui/imgui_draw.cpp
