@@ -62,8 +62,6 @@ void logic_tick()
 	uniforms.P = glm::perspective(glm::radians(45.0f), (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 100.0f);
 	uniforms.P[1][1] *= -1.0f;
 
-	uniforms.wireframe = wireframe_timeline.normalized();
-
 	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
 
 	// POST-TICKS
@@ -129,12 +127,8 @@ void end_frame(VkCommandBuffer command_buffer)
 		throw std::runtime_error("[ERROR] failed to finish recording render command buffer");
 }
 
-void draw_mesh(VkCommandBuffer command_buffer, TOS_mesh* mesh, int texture_idx)
+void draw_mesh(VkCommandBuffer command_buffer, TOS_mesh* mesh)
 {
-	TOS_push_constant push_constant;
-	push_constant.texture_idx = texture_idx;
-	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
-
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh->vertex_buffer, &offset);
 	vkCmdBindIndexBuffer(command_buffer, mesh->index_buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -148,8 +142,20 @@ void record_render_commands(uint32_t image_index)
 
 	begin_frame(command_buffer, image_index);
 	
-	draw_mesh(command_buffer, &mesh, 0);
-	draw_mesh(command_buffer, &aabb, 1);
+	TOS_push_constant push_constant = 
+	{
+		.texture_idx = 0,
+		.wireframe = wireframe_timeline.normalized()
+	};
+	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
+	draw_mesh(command_buffer, &mesh);
+	push_constant = 
+	{
+		.texture_idx = 1,
+		.wireframe = 1
+	};
+	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
+	draw_mesh(command_buffer, &aabb);
 
 	if(show_gui)
 	{
@@ -238,7 +244,7 @@ int main(int argc, const char * argv[])
 		TOS_load_mesh(&device, &mesh, "assets/meshes/viking_room.obj");
 		TOS_AABB_mesh(&device, &aabb, mesh.min, mesh.max);
 		TOS_load_texture(&device, &texture, "assets/textures/viking_room.ppm");
-		TOS_load_texture(&device, &aabb_texture, "assets/textures/brick.ppm");
+		TOS_load_texture(&device, &aabb_texture, "assets/textures/red.ppm");
 		textures[0] = texture;
 		textures[1] = aabb_texture;
 		for(int i = 2; i < MAX_TEXTURE_COUNT; i++)

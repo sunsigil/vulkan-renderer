@@ -5,12 +5,12 @@ layout(binding = 0) uniform TOS_UBO
 	mat4 M;
 	mat4 V;
 	mat4 P;
-	float wireframe;
 } ubo;
 
 layout(push_constant) uniform TOS_push_constant
 {
 	int texture_idx;
+	float wireframe;
 } push_constant;
 
 layout(location = 0) in vec3 in_position;
@@ -26,6 +26,6 @@ void main()
 	gl_Position = MVP * vec4(in_position, 1.0);
 	
 	out_uv = in_uv;
-	out_wireframe = ubo.wireframe;
+	out_wireframe = push_constant.wireframe;
 	out_texture_idx = push_constant.texture_idx;
 }
