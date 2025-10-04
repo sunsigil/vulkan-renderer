@@ -10,10 +10,13 @@
 #include "gui.h"
 #include "timing.h"
 #include "machines.h"
+#include "camera.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_vulkan.h"
+
+#include "glm/gtx/string_cast.hpp"
 
 static TOS_context context;
 static TOS_device device;
@@ -23,16 +26,29 @@ static TOS_descriptor_pipeline descriptor_pipeline;
 static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
 static TOS_mesh mesh;
 static TOS_mesh aabb;
-static TOS_texture texture;
-static TOS_texture aabb_texture;
-static TOS_texture textures[MAX_TEXTURE_COUNT] = {NULL};
+static TOS_texture textures[MAX_TEXTURE_COUNT];
 
 static TOS_graphics_pipeline pipeline;
 
+static TOS_camera camera;
 static TOS_UBO uniforms;
 static bool show_gui;
 static TOS_latch wireframe_latch(false);
 static TOS_timeline wireframe_timeline(0.5, true);
+
+void logic_init()
+{
+	TOS_create_timing_context();
+	TOS_create_input_context(&context);
+
+	camera = TOS_camera
+	(
+		glm::vec3(0, 0, 2), glm::vec3(0),
+		M_PI/4, (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 1000.0f
+	);
+
+	TOS_toggle_cursor(false);
+}
 
 void logic_tick()
 {
@@ -44,7 +60,29 @@ void logic_tick()
 	// INPUT-CONTROLLED
 
 	if(TOS_key_down(GLFW_KEY_LEFT_SHIFT) && TOS_key_pressed(GLFW_KEY_TAB))
+	{
 		show_gui = !show_gui;
+		TOS_toggle_cursor(show_gui);
+	}
+
+	if(!show_gui)
+	{
+		glm::vec3 walk = glm::vec3(0);
+		if(TOS_key_down(GLFW_KEY_W))
+			walk += camera.transform.forward();
+		if(TOS_key_down(GLFW_KEY_S))
+			walk -= camera.transform.forward();
+		if(TOS_key_down(GLFW_KEY_D))
+			walk -= camera.transform.right();
+		if(TOS_key_down(GLFW_KEY_A))
+			walk += camera.transform.right();
+		camera.transform.velocity = 7.0f * walk;
+
+		glm::vec2 dmouse = TOS_mouse_delta();
+		dmouse.x /= context.window_width;
+		dmouse.y /= context.window_height;
+		camera.rotate(dmouse.y, -dmouse.x);
+	}
 
 	// GUI-CONTROLLED
 
@@ -58,8 +96,8 @@ void logic_tick()
 	// EFFECTS
 	
 	uniforms.M = glm::rotate(glm::mat4(1.0f), TOS_get_elapsed_time_s() * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	uniforms.V = glm::lookAt(glm::vec3(2, 2, 2), glm::vec3(0, 0, 0), glm::vec3(0.0f, 1.0f, 0.0f));
-	uniforms.P = glm::perspective(glm::radians(45.0f), (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 100.0f);
+	uniforms.V = camera.V();
+	uniforms.P = camera.P();
 	uniforms.P[1][1] *= -1.0f;
 
 	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
@@ -68,6 +106,7 @@ void logic_tick()
 
 	wireframe_timeline.tick();
 	wireframe_latch.tick();
+	camera.tick();
 }
 
 void begin_frame(VkCommandBuffer command_buffer, uint32_t image_index)
@@ -243,12 +282,8 @@ int main(int argc, const char * argv[])
 			TOS_create_uniform_buffer(&device, &uniform_buffers[i]);
 		TOS_load_mesh(&device, &mesh, "assets/meshes/viking_room.obj");
 		TOS_AABB_mesh(&device, &aabb, mesh.min, mesh.max);
-		TOS_load_texture(&device, &texture, "assets/textures/viking_room.ppm");
-		TOS_load_texture(&device, &aabb_texture, "assets/textures/red.ppm");
-		textures[0] = texture;
-		textures[1] = aabb_texture;
-		for(int i = 2; i < MAX_TEXTURE_COUNT; i++)
-			textures[i] = texture;
+		TOS_load_texture(&device, &textures[0], "assets/textures/viking_room.ppm");
+		TOS_load_texture(&device, &textures[1], "assets/textures/red.ppm");
 
 		TOS_create_descriptor_pipeline(&descriptor_pipeline, MAX_CONCURRENT_FRAMES);
 		TOS_register_descriptor_binding(&descriptor_pipeline, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
@@ -263,10 +298,9 @@ int main(int argc, const char * argv[])
 		}
 
 		TOS_create_pipeline(&device, &swapchain, &descriptor_pipeline, &pipeline);
-
-		TOS_create_timing_context();
-		TOS_create_input_context(&context);
 		TOS_create_gui_context(&context, &device, &swapchain);
+
+		logic_init();
 
 		while(!glfwWindowShouldClose(context.window_handle))
 		{
@@ -281,8 +315,8 @@ int main(int argc, const char * argv[])
 
 		TOS_destroy_pipeline(&device, &pipeline);
 		TOS_destroy_descriptor_pipeline(&device, &descriptor_pipeline);
-		TOS_destroy_texture(&device, &aabb_texture);
-		TOS_destroy_texture(&device, &texture);
+		TOS_destroy_texture(&device, &textures[1]);
+		TOS_destroy_texture(&device, &textures[0]);
 		TOS_destroy_mesh(&device, &aabb);
 		TOS_destroy_mesh(&device, &mesh);
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)

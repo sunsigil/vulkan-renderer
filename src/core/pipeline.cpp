@@ -66,7 +66,7 @@ void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pip
 	for(int i = 0; i < pipeline->bindings.size(); i++)
 	{
 		pool_sizes[i].type = pipeline->bindings[i].descriptorType;
-		pool_sizes[i].descriptorCount = pipeline->concurrency * MAX_TEXTURE_COUNT;
+		pool_sizes[i].descriptorCount = pipeline->bindings[i].descriptorCount * pipeline->concurrency;
 	}
 	
 	VkDescriptorPoolCreateInfo create_info {};
@@ -129,10 +129,11 @@ void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipe
 	VkDescriptorImageInfo info[MAX_TEXTURE_COUNT];
 	for(int i = 0; i < MAX_TEXTURE_COUNT; i++)
 	{
+		int tex_idx = texture[i].image == VK_NULL_HANDLE ? 0 : i;
 		info[i] = {};
-		info[i].imageView = texture[i].view;
+		info[i].imageView = texture[tex_idx].view;
 		info[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		info[i].sampler = texture[i].sampler;
+		info[i].sampler = texture[tex_idx].sampler;
 	}
 	
 	VkWriteDescriptorSet write;

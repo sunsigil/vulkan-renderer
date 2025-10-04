@@ -17,3 +17,5 @@ bool TOS_mouse_down();
 bool TOS_mouse_up();
 bool TOS_mouse_pressed();
 bool TOS_mouse_released();
+
+void TOS_toggle_cursor(bool state);

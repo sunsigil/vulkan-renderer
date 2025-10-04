@@ -31,6 +31,8 @@ target_sources(main PRIVATE
 	src/gui.cpp
 	src/timing.cpp
 	src/machines.cpp
+	src/camera.cpp
+	src/transform.cpp
 
 	src/imgui/imgui_demo.cpp
 	src/imgui/imgui_draw.cpp
