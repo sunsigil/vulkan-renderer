@@ -9,6 +9,7 @@
 #include "input.h"
 #include "gui.h"
 #include "timing.h"
+#include "machines.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
@@ -26,21 +27,46 @@ static TOS_texture texture;
 static TOS_graphics_pipeline pipeline;
 
 static TOS_UBO uniforms;
-static bool show_gui = false;
+static bool show_gui;
+static TOS_latch wireframe_latch(false);
+static TOS_timeline wireframe_timeline(0.5, true);
 
 void logic_tick()
 {
+	// PRE-TICKS
+
 	TOS_timing_tick();
 	TOS_input_tick();
+
+	// INPUT-CONTROLLED
+
+	if(TOS_key_down(GLFW_KEY_LEFT_SHIFT) && TOS_key_pressed(GLFW_KEY_TAB))
+		show_gui = !show_gui;
+
+	// GUI-CONTROLLED
+
+	if(wireframe_latch.flipped())
+	{
+		wireframe_timeline.reset();
+		wireframe_timeline.resume();
+		wireframe_timeline.reverse();
+	}
+
+	// EFFECTS
 	
 	uniforms.M = glm::rotate(glm::mat4(1.0f), TOS_get_elapsed_time_s() * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	uniforms.V = glm::lookAt(glm::vec3(2, 2, 2), glm::vec3(0, 0, 0), glm::vec3(0.0f, 1.0f, 0.0f));
 	uniforms.P = glm::perspective(glm::radians(45.0f), (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 100.0f);
 	uniforms.P[1][1] *= -1.0f;
+
+	uniforms.wireframe = wireframe_timeline.normalized();
+
 	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
 
-	if(TOS_key_down(GLFW_KEY_LEFT_SHIFT) && TOS_key_pressed(GLFW_KEY_TAB))
-		show_gui = !show_gui;
+	// POST-TICKS
+
+	wireframe_timeline.tick();
+	wireframe_latch.tick();
 }
 
 void begin_frame(VkCommandBuffer command_buffer, uint32_t image_index)
@@ -118,7 +144,8 @@ void record_render_commands(uint32_t image_index)
 		TOS_gui_begin_overlay();
 		ImGui::Text("[SHIFT]+[TAB] to toggle overlay");
 		ImGui::Text("FPS: %d", TOS_get_FPS());
-		ImGui::Checkbox("Wireframe", &uniforms.wireframe);
+		ImGui::Checkbox("Wireframe", &wireframe_latch.state);
+		ImGui::Text("wf %f\n", wireframe_timeline.get());
 		TOS_gui_end_overlay();
 		TOS_gui_end_frame();
 	}

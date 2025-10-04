@@ -5,7 +5,7 @@ layout(binding = 0) uniform TOS_UBO
 	mat4 M;
 	mat4 V;
 	mat4 P;
-	bool wireframe;
+	float wireframe;
 } ubo;
 
 layout(location = 0) in vec3 in_position;
@@ -20,5 +20,5 @@ void main()
 	gl_Position = MVP * vec4(in_position, 1.0);
 	
 	out_uv = in_uv;
-	out_wireframe = float(ubo.wireframe);
+	out_wireframe = ubo.wireframe;
 }

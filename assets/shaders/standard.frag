@@ -10,22 +10,20 @@ layout(location = 0) out vec4 out_colour;
 
 float wireframe(in float thickness, in float falloff)
 {
-	const vec3 BaryCoord = gl_BaryCoordEXT;
+	const vec3 bary = gl_BaryCoordEXT;
 
-	const vec3 dBaryCoordX = dFdxFine(BaryCoord);
-	const vec3 dBaryCoordY = dFdyFine(BaryCoord);
-	const vec3 dBaryCoord  = sqrt(dBaryCoordX*dBaryCoordX + dBaryCoordY*dBaryCoordY);
+	const vec3 dbx = dFdxFine(bary);
+	const vec3 dby = dFdyFine(bary);
+	const vec3 db  = sqrt(dbx*dbx + dby*dby);
 
-	const vec3 dFalloff   = dBaryCoord * falloff;
-	const vec3 dThickness = dBaryCoord * thickness;
+	const vec3 remapped = smoothstep(db * thickness, db * (thickness + falloff), bary);
+	const float nearest = min(min(remapped.x, remapped.y), remapped.z);
 
-	const vec3 Remap = smoothstep(dThickness, dThickness + dFalloff, BaryCoord);
-	const float ClosestEdge = min(min(Remap.x, Remap.y), Remap.z);
-
-	return 1.0 - ClosestEdge;
+	return 1.0-nearest;
 }
 
 void main()
 {
-	out_colour = texture(tex, in_uv) * (bool(in_wireframe) ? wireframe(0.5, 0.5) : 1);
+	float contrib = mix(1.0, wireframe(1.0, 0.0), in_wireframe);
+	out_colour = texture(tex, in_uv) * contrib;
 }

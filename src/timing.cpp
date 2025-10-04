@@ -1,5 +1,7 @@
 #include "timing.h"
 
+#include "cowtools.h"
+
 static uint64_t frames;
 static timepoint start;
 static timepoint now;
@@ -39,4 +41,54 @@ float TOS_get_delta_time_s()
 int TOS_get_FPS()
 {
 	return round(1.0f/dt);
+}
+
+
+// TOS_timeline
+////////////////////////////////////////////////////////////////
+
+TOS_timeline::TOS_timeline(float duration, bool reversed, bool paused) :
+duration(duration), t(0), reversed(reversed), paused(paused) {}
+
+float TOS_timeline::get()
+{
+	if(reversed)
+		return duration - t;
+	return t;
+}
+
+float TOS_timeline::normalized()
+{
+	return get() / duration;
+}
+
+void TOS_timeline::set(float _t)
+{
+	t = TOS_clamp(_t, 0, duration);
+}
+
+void TOS_timeline::pause()
+{
+	paused = true;
+}
+
+void TOS_timeline::resume()
+{
+	paused = false;
+}
+
+void TOS_timeline::reset()
+{
+	t = 0;
+}
+
+void TOS_timeline::reverse()
+{
+	reversed = !reversed;
+}
+
+void TOS_timeline::tick()
+{
+	if(!paused)
+		t = TOS_clamp(t + TOS_get_delta_time_s(), 0, duration);
 }
