@@ -22,7 +22,10 @@ static TOS_swapchain swapchain;
 static TOS_descriptor_pipeline descriptor_pipeline;
 static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
 static TOS_mesh mesh;
+static TOS_mesh aabb;
 static TOS_texture texture;
+static TOS_texture aabb_texture;
+static TOS_texture textures[MAX_TEXTURE_COUNT] = {NULL};
 
 static TOS_graphics_pipeline pipeline;
 
@@ -126,17 +129,27 @@ void end_frame(VkCommandBuffer command_buffer)
 		throw std::runtime_error("[ERROR] failed to finish recording render command buffer");
 }
 
+void draw_mesh(VkCommandBuffer command_buffer, TOS_mesh* mesh, int texture_idx)
+{
+	TOS_push_constant push_constant;
+	push_constant.texture_idx = texture_idx;
+	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
+
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh->vertex_buffer, &offset);
+	vkCmdBindIndexBuffer(command_buffer, mesh->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
+	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh->indices.size(), 1, 0, 0, 0);
+}
+
 void record_render_commands(uint32_t image_index)
 {
 	VkCommandBuffer command_buffer = pipeline.render_command_buffers[pipeline.frame_idx];
 
 	begin_frame(command_buffer, image_index);
 	
-	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh.vertex_buffer, &offset);
-	vkCmdBindIndexBuffer(command_buffer, mesh.index_buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
-	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh.indices.size(), 1, 0, 0, 0);
+	draw_mesh(command_buffer, &mesh, 0);
+	draw_mesh(command_buffer, &aabb, 1);
 
 	if(show_gui)
 	{
@@ -145,7 +158,6 @@ void record_render_commands(uint32_t image_index)
 		ImGui::Text("[SHIFT]+[TAB] to toggle overlay");
 		ImGui::Text("FPS: %d", TOS_get_FPS());
 		ImGui::Checkbox("Wireframe", &wireframe_latch.state);
-		ImGui::Text("wf %f\n", wireframe_timeline.get());
 		TOS_gui_end_overlay();
 		TOS_gui_end_frame();
 	}
@@ -224,7 +236,13 @@ int main(int argc, const char * argv[])
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 			TOS_create_uniform_buffer(&device, &uniform_buffers[i]);
 		TOS_load_mesh(&device, &mesh, "assets/meshes/viking_room.obj");
+		TOS_AABB_mesh(&device, &aabb, mesh.min, mesh.max);
 		TOS_load_texture(&device, &texture, "assets/textures/viking_room.ppm");
+		TOS_load_texture(&device, &aabb_texture, "assets/textures/brick.ppm");
+		textures[0] = texture;
+		textures[1] = aabb_texture;
+		for(int i = 2; i < MAX_TEXTURE_COUNT; i++)
+			textures[i] = texture;
 
 		TOS_create_descriptor_pipeline(&descriptor_pipeline, MAX_CONCURRENT_FRAMES);
 		TOS_register_descriptor_binding(&descriptor_pipeline, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
@@ -235,7 +253,7 @@ int main(int argc, const char * argv[])
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 		{
 			TOS_update_uniform_buffer_descriptor(&device, &descriptor_pipeline, 0, i, &uniform_buffers[i]);
-			TOS_update_image_sampler_descriptor(&device, &descriptor_pipeline, 1, i, &texture);
+			TOS_update_image_sampler_descriptor(&device, &descriptor_pipeline, 1, i, textures);
 		}
 
 		TOS_create_pipeline(&device, &swapchain, &descriptor_pipeline, &pipeline);
@@ -257,7 +275,9 @@ int main(int argc, const char * argv[])
 
 		TOS_destroy_pipeline(&device, &pipeline);
 		TOS_destroy_descriptor_pipeline(&device, &descriptor_pipeline);
+		TOS_destroy_texture(&device, &aabb_texture);
 		TOS_destroy_texture(&device, &texture);
+		TOS_destroy_mesh(&device, &aabb);
 		TOS_destroy_mesh(&device, &mesh);
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 			TOS_destroy_uniform_buffer(&device, &uniform_buffers[i]);

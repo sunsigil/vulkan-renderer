@@ -117,6 +117,22 @@ void TOS_create_mesh(TOS_device* device, TOS_mesh* mesh, std::vector<TOS_vertex>
 	mesh->indices = indices;
 	create_vertex_buffer(device, mesh);
 	create_index_buffer(device, mesh);
+
+	mesh->min = glm::vec3(INFINITY, INFINITY, INFINITY);
+	mesh->max = -mesh->min;
+	for(int i = 0; i < mesh->vertices.size(); i++)
+	{
+		mesh->min = glm::min(mesh->min, mesh->vertices[i].position);
+		mesh->max = glm::max(mesh->max, mesh->vertices[i].position);
+	}
+}
+
+void TOS_destroy_mesh(TOS_device* device, TOS_mesh* mesh)
+{
+	vkFreeMemory(device->logical, mesh->index_memory, nullptr);
+	vkDestroyBuffer(device->logical, mesh->index_buffer, nullptr);
+	vkFreeMemory(device->logical, mesh->vertex_memory, nullptr);
+	vkDestroyBuffer(device->logical, mesh->vertex_buffer, nullptr);
 }
 
 void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path)
@@ -126,7 +142,7 @@ void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path)
 	
 	std::vector<TOS_vertex> vertices;
 	std::vector<uint32_t> indices;
-	std::unordered_map<TOS_vertex, uint32_t> unique_vertices;
+	std::unordered_map<TOS_vertex, uint32_t> unique;
 
 	for(int f_idx = 0; f_idx < obj.f.size(); f_idx += 9)
 	{
@@ -157,22 +173,87 @@ void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path)
 				.uv = vt
 			};
 			
-			if(unique_vertices.count(vertex) == 0)
+			if(unique.count(vertex) == 0)
 			{
-				unique_vertices[vertex] = (uint32_t) vertices.size();
+				unique[vertex] = (uint32_t) vertices.size();
 				vertices.push_back(vertex);
 			}
-			indices.push_back(unique_vertices[vertex]);
+			indices.push_back(unique[vertex]);
 		}
 	}
 
 	TOS_create_mesh(device, mesh, vertices, indices);
 }
 
-void TOS_destroy_mesh(TOS_device* device, TOS_mesh* mesh)
+void TOS_AABB_mesh(TOS_device* device, TOS_mesh* mesh, glm::vec3 min, glm::vec3 max)
 {
-	vkFreeMemory(device->logical, mesh->index_memory, nullptr);
-	vkDestroyBuffer(device->logical, mesh->index_buffer, nullptr);
-	vkFreeMemory(device->logical, mesh->vertex_memory, nullptr);
-	vkDestroyBuffer(device->logical, mesh->vertex_buffer, nullptr);
+	std::vector<TOS_vertex> vertices;
+	std::vector<uint32_t> indices;
+	std::unordered_map<TOS_vertex, uint32_t> unique;
+
+	glm::vec3 positions[8] =
+	{
+		min, // 0, 0, 0
+		glm::vec3(max.x, min.y, min.z), // 1, 0, 0
+		glm::vec3(min.x, max.y, min.z), // 0, 1, 0
+		glm::vec3(max.x, max.y, min.z), // 1, 1, 0
+		glm::vec3(min.x, min.y, max.z), // 0, 0, 1
+		glm::vec3(max.x, min.y, max.z), // 1, 0, 1
+		glm::vec3(min.x, max.y, max.z), // 0, 1, 1
+		max // 1, 1, 1
+	};
+	glm::vec2 uvs[8] =
+	{
+		glm::vec2(0, 0),
+		glm::vec2(1, 0),
+		glm::vec2(0, 1),
+		glm::vec2(1, 1),	
+	};
+
+	/*
+    	   6-----7
+		2--|--3  |
+		|  4--|--5
+		0-----1
+	*/
+	std::vector<uint32_t> position_indices =
+	{
+		1, 2, 3,
+		2, 1, 0,
+
+		0, 5, 4,
+		5, 0, 1,
+
+		0, 6, 2,
+		6, 0, 4,
+
+		5, 3, 7,
+		3, 5, 1,
+
+		3, 6, 7,
+		6, 3, 2,
+
+		4, 7, 6,
+		7, 4, 5,		
+	};
+
+	for(int i = 0; i < position_indices.size(); i++)
+	{
+		int pos_idx = position_indices[i];
+		int uv_idx = pos_idx % 4;
+
+		TOS_vertex vertex
+		{
+			.position = positions[pos_idx],
+			.uv = uvs[uv_idx]
+		};
+		if(unique.count(vertex) == 0)
+		{
+			unique[vertex] = (uint32_t) vertices.size();
+			vertices.push_back(vertex);
+		}
+		indices.push_back(unique[vertex]);
+	}
+
+	TOS_create_mesh(device, mesh, vertices, indices);
 }

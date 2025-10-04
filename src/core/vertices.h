@@ -40,8 +40,12 @@ struct TOS_mesh
 	std::vector<uint32_t> indices;
 	VkBuffer index_buffer = VK_NULL_HANDLE;
 	VkDeviceMemory index_memory = VK_NULL_HANDLE;
+
+	glm::vec3 min;
+	glm::vec3 max;
 };
 
 void TOS_create_mesh(TOS_device* device, TOS_mesh* mesh, std::vector<TOS_vertex> vertices, std::vector<uint32_t> indices);
-void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path);
 void TOS_destroy_mesh(TOS_device* device, TOS_mesh* mesh);
+void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path);
+void TOS_AABB_mesh(TOS_device* device, TOS_mesh* mesh, glm::vec3 min, glm::vec3 max);

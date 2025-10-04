@@ -8,11 +8,17 @@ layout(binding = 0) uniform TOS_UBO
 	float wireframe;
 } ubo;
 
+layout(push_constant) uniform TOS_push_constant
+{
+	int texture_idx;
+} push_constant;
+
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec2 in_uv;
 
 layout(location = 0) out vec2 out_uv;
 layout(location = 1) out float out_wireframe;
+layout(location = 2) out int out_texture_idx;
 
 void main()
 {
@@ -21,4 +27,5 @@ void main()
 	
 	out_uv = in_uv;
 	out_wireframe = ubo.wireframe;
+	out_texture_idx = push_constant.texture_idx;
 }

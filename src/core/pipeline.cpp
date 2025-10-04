@@ -38,7 +38,7 @@ void TOS_register_descriptor_binding(TOS_descriptor_pipeline* pipeline, VkDescri
 {
 	VkDescriptorSetLayoutBinding binding {};
 	binding.binding = pipeline->bindings.size();
-	binding.descriptorCount = 1;
+	binding.descriptorCount = type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ? MAX_TEXTURE_COUNT : 1;
 	binding.descriptorType = type;
 	binding.stageFlags = stages;
 	binding.pImmutableSamplers = nullptr;
@@ -66,7 +66,7 @@ void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pip
 	for(int i = 0; i < pipeline->bindings.size(); i++)
 	{
 		pool_sizes[i].type = pipeline->bindings[i].descriptorType;
-		pool_sizes[i].descriptorCount = pipeline->concurrency;
+		pool_sizes[i].descriptorCount = pipeline->concurrency * MAX_TEXTURE_COUNT;
 	}
 	
 	VkDescriptorPoolCreateInfo create_info {};
@@ -126,19 +126,24 @@ void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pip
 
 void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture)
 {
-	VkDescriptorImageInfo info {};
-	info.imageView = texture->view;
-	info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	info.sampler = texture->sampler;
+	VkDescriptorImageInfo info[MAX_TEXTURE_COUNT];
+	for(int i = 0; i < MAX_TEXTURE_COUNT; i++)
+	{
+		info[i] = {};
+		info[i].imageView = texture[i].view;
+		info[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		info[i].sampler = texture[i].sampler;
+	}
 	
-	VkWriteDescriptorSet write {};
+	VkWriteDescriptorSet write;
+	write = {};
 	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	write.dstSet = pipeline->sets[set_idx];
 	write.dstBinding = binding_idx;
 	write.dstArrayElement = 0;
 	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	write.descriptorCount = 1;
-	write.pImageInfo = &info;
+	write.descriptorCount = MAX_TEXTURE_COUNT;
+	write.pImageInfo = info;
 
 	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
 }
@@ -287,13 +292,18 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	depth_stencil_info.depthCompareOp = VK_COMPARE_OP_LESS;
 	depth_stencil_info.depthBoundsTestEnable = VK_FALSE;
 	depth_stencil_info.stencilTestEnable = VK_FALSE;
+
+	VkPushConstantRange push_constant_range {};
+	push_constant_range.offset = 0;
+	push_constant_range.size = sizeof(TOS_push_constant);
+	push_constant_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	
 	VkPipelineLayoutCreateInfo pipeline_layout_info {};
 	pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipeline_layout_info.setLayoutCount = 1;
 	pipeline_layout_info.pSetLayouts = &descriptor_pipeline->layout;
-	pipeline_layout_info.pushConstantRangeCount = 0;
-	pipeline_layout_info.pPushConstantRanges = nullptr;
+	pipeline_layout_info.pushConstantRangeCount = 1;
+	pipeline_layout_info.pPushConstantRanges = &push_constant_range;
 	
 	VkResult result = vkCreatePipelineLayout(device->logical, &pipeline_layout_info, nullptr, &pipeline->pipeline_layout);
 	if(result != VK_SUCCESS)

@@ -6,6 +6,7 @@
 #include "swapchain.h"
 
 #define MAX_CONCURRENT_FRAMES 2
+#define MAX_TEXTURE_COUNT 8
 
 struct TOS_UBO
 {
@@ -24,6 +25,11 @@ struct TOS_uniform_buffer
 
 void TOS_create_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
 void TOS_destroy_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
+
+struct TOS_push_constant
+{
+	int texture_idx;
+};
 
 struct TOS_descriptor_pipeline
 {
