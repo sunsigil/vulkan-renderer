@@ -33,6 +33,7 @@ target_sources(main PRIVATE
 	src/machines.cpp
 	src/camera.cpp
 	src/transform.cpp
+	src/geometry.cpp
 
 	src/imgui/imgui_demo.cpp
 	src/imgui/imgui_draw.cpp

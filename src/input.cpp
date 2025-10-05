@@ -107,5 +107,5 @@ bool TOS_mouse_released()
 void TOS_toggle_cursor(bool state)
 {
 	cursor = state;
-	glfwSetInputMode(context->window_handle, GLFW_CURSOR, cursor ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+	//glfwSetInputMode(context->window_handle, GLFW_CURSOR, cursor ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
 }

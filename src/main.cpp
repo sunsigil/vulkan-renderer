@@ -32,9 +32,12 @@ static TOS_graphics_pipeline pipeline;
 
 static TOS_camera camera;
 static TOS_UBO uniforms;
+static TOS_push_constant push_constant;
 static bool show_gui;
 static TOS_latch wireframe_latch(false);
 static TOS_timeline wireframe_timeline(0.5, true);
+static bool show_aabb;
+static TOS_transform model;
 
 void logic_init()
 {
@@ -43,7 +46,7 @@ void logic_init()
 
 	camera = TOS_camera
 	(
-		glm::vec3(0, 0, 2), glm::vec3(0),
+		glm::vec3(0, 0, -3), glm::vec3(0),
 		M_PI/4, (float) swapchain.extent.width / (float) swapchain.extent.height, 0.01f, 1000.0f
 	);
 
@@ -84,6 +87,21 @@ void logic_tick()
 		camera.rotate(dmouse.y, -dmouse.x);
 	}
 
+	show_aabb = false;
+	if(TOS_mouse_down())
+	{
+		glm::vec2 mouse = TOS_mouse_position();
+		mouse.x /= context.window_width;
+		mouse.y /= context.window_height;
+		TOS_ray ray = camera.viewport_ray(mouse.x, mouse.y);
+
+		TOS_AABB aabb = TOS_AABB::min_max(mesh.min, mesh.max);
+
+		std::optional<TOS_raycast_hit> hit = TOS_ray_OBB_intersect(ray, aabb, model.M());
+		if(hit.has_value())
+			show_aabb = true;
+	}
+
 	// GUI-CONTROLLED
 
 	if(wireframe_latch.flipped())
@@ -94,12 +112,10 @@ void logic_tick()
 	}
 
 	// EFFECTS
-	
-	uniforms.M = glm::rotate(glm::mat4(1.0f), TOS_get_elapsed_time_s() * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	model.orientation.y += TOS_get_delta_time_s();
 	uniforms.V = camera.V();
 	uniforms.P = camera.P();
 	uniforms.P[1][1] *= -1.0f;
-
 	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
 
 	// POST-TICKS
@@ -168,6 +184,7 @@ void end_frame(VkCommandBuffer command_buffer)
 
 void draw_mesh(VkCommandBuffer command_buffer, TOS_mesh* mesh)
 {
+	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh->vertex_buffer, &offset);
 	vkCmdBindIndexBuffer(command_buffer, mesh->index_buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -180,21 +197,19 @@ void record_render_commands(uint32_t image_index)
 	VkCommandBuffer command_buffer = pipeline.render_command_buffers[pipeline.frame_idx];
 
 	begin_frame(command_buffer, image_index);
-	
-	TOS_push_constant push_constant = 
-	{
-		.texture_idx = 0,
-		.wireframe = wireframe_timeline.normalized()
-	};
-	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
+
+	push_constant.M = model.M();
+	push_constant.texture_idx = 0;
+	push_constant.wireframe = wireframe_timeline.normalized();
 	draw_mesh(command_buffer, &mesh);
-	push_constant = 
+	
+	if(show_aabb)
 	{
-		.texture_idx = 1,
-		.wireframe = 1
-	};
-	vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
-	draw_mesh(command_buffer, &aabb);
+		push_constant.texture_idx = 1;
+		push_constant.wireframe = 1;
+		vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
+		draw_mesh(command_buffer, &aabb);
+	}
 
 	if(show_gui)
 	{

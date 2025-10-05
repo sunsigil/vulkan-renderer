@@ -10,7 +10,6 @@
 
 struct TOS_UBO
 {
-	alignas(16) glm::mat4 M;
 	alignas(16) glm::mat4 V;
 	alignas(16) glm::mat4 P;
 };
@@ -27,6 +26,7 @@ void TOS_destroy_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
 
 struct TOS_push_constant
 {
+	glm::mat4 M;
 	int texture_idx;
 	float wireframe;
 };

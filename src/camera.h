@@ -5,6 +5,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "transform.h"
+#include "geometry.h"
 
 class TOS_camera
 {
@@ -14,7 +15,6 @@ public:
 	float aspect;
 	float near;
 	float far;
-
 
 	TOS_camera();
 	TOS_camera
@@ -26,7 +26,6 @@ public:
 	void rotate(float pitch, float yaw);
 	glm::mat4 V();
 	glm::mat4 P();
+	TOS_ray viewport_ray(float x, float y);
 	void tick();
-
-private:
 };
