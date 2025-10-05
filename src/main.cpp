@@ -25,19 +25,30 @@ static TOS_swapchain swapchain;
 static TOS_descriptor_pipeline descriptor_pipeline;
 static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
 static TOS_mesh mesh;
-static TOS_mesh aabb;
+static TOS_mesh aabb_mesh;
+static TOS_mesh transform_gizmos[3];
 static TOS_texture textures[MAX_TEXTURE_COUNT];
 
 static TOS_graphics_pipeline pipeline;
+static TOS_work_manager work_manager;
 
 static TOS_camera camera;
 static TOS_UBO uniforms;
 static TOS_push_constant push_constant;
+static TOS_transform model;
+
 static bool show_gui;
 static TOS_latch wireframe_latch(false);
 static TOS_timeline wireframe_timeline(0.5, true);
-static bool show_aabb;
-static TOS_transform model;
+static bool selected;
+enum TOS_transform_op
+{
+	TOS_TRANSFORM_OP_TRANSLATE,
+	TOS_TRANSFORM_OP_ROTATE,
+	TOS_TRANSFORM_OP_SCALE,
+	TOS_TRANSFORM_OP_COUNT
+};
+static int transform_op = TOS_TRANSFORM_OP_TRANSLATE;
 
 void logic_init()
 {
@@ -86,20 +97,28 @@ void logic_tick()
 		dmouse.y /= context.window_height;
 		camera.rotate(dmouse.y, -dmouse.x);
 	}
-
-	show_aabb = false;
-	if(TOS_mouse_down())
+	else
 	{
-		glm::vec2 mouse = TOS_mouse_position();
-		mouse.x /= context.window_width;
-		mouse.y /= context.window_height;
-		TOS_ray ray = camera.viewport_ray(mouse.x, mouse.y);
+		if(TOS_mouse_pressed())
+		{
+			glm::vec2 mouse = TOS_mouse_position(true);
+			TOS_ray ray = camera.viewport_ray(mouse.x, mouse.y);
 
-		TOS_AABB aabb = TOS_AABB::min_max(mesh.min, mesh.max);
+			TOS_AABB aabb = TOS_AABB::min_max(mesh.min, mesh.max);
 
-		std::optional<TOS_raycast_hit> hit = TOS_ray_OBB_intersect(ray, aabb, model.M());
-		if(hit.has_value())
-			show_aabb = true;
+			std::optional<TOS_raycast_hit> hit = TOS_ray_OBB_intersect(ray, aabb, model.M());
+			selected = hit.has_value();		
+		}
+
+		if(selected)
+		{
+			if(TOS_key_pressed(GLFW_KEY_G))
+				transform_op = TOS_TRANSFORM_OP_TRANSLATE;
+			if(TOS_key_pressed(GLFW_KEY_R))
+				transform_op = TOS_TRANSFORM_OP_ROTATE;
+			if(TOS_key_pressed(GLFW_KEY_S))
+				transform_op = TOS_TRANSFORM_OP_SCALE;
+		}
 	}
 
 	// GUI-CONTROLLED
@@ -112,11 +131,10 @@ void logic_tick()
 	}
 
 	// EFFECTS
-	model.orientation.y += TOS_get_delta_time_s();
 	uniforms.V = camera.V();
 	uniforms.P = camera.P();
 	uniforms.P[1][1] *= -1.0f;
-	memcpy(uniform_buffers[pipeline.frame_idx].pointer, &uniforms, sizeof(uniforms));
+	memcpy(uniform_buffers[work_manager.frame_idx].pointer, &uniforms, sizeof(uniforms));
 
 	// POST-TICKS
 
@@ -188,14 +206,13 @@ void draw_mesh(VkCommandBuffer command_buffer, TOS_mesh* mesh)
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh->vertex_buffer, &offset);
 	vkCmdBindIndexBuffer(command_buffer, mesh->index_buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[pipeline.frame_idx], 0, nullptr);
+	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[work_manager.frame_idx], 0, nullptr);
 	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh->indices.size(), 1, 0, 0, 0);
 }
 
 void record_render_commands(uint32_t image_index)
 {
-	VkCommandBuffer command_buffer = pipeline.render_command_buffers[pipeline.frame_idx];
-
+	VkCommandBuffer command_buffer = work_manager.render_command_buffers[work_manager.frame_idx];
 	begin_frame(command_buffer, image_index);
 
 	push_constant.M = model.M();
@@ -203,12 +220,13 @@ void record_render_commands(uint32_t image_index)
 	push_constant.wireframe = wireframe_timeline.normalized();
 	draw_mesh(command_buffer, &mesh);
 	
-	if(show_aabb)
+	if(selected)
 	{
 		push_constant.texture_idx = 1;
 		push_constant.wireframe = 1;
 		vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
-		draw_mesh(command_buffer, &aabb);
+		draw_mesh(command_buffer, &aabb_mesh);
+		draw_mesh(command_buffer, &transform_gizmos[transform_op]);
 	}
 
 	if(show_gui)
@@ -227,9 +245,9 @@ void record_render_commands(uint32_t image_index)
 
 void render_tick()
 {
-	vkWaitForFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx], VK_TRUE, UINT64_MAX);
+	vkWaitForFences(device.logical, 1, &work_manager.frame_fences[work_manager.frame_idx], VK_TRUE, UINT64_MAX);
 	uint32_t image_idx;
-	VkResult result = vkAcquireNextImageKHR(device.logical, swapchain.handle, UINT64_MAX, pipeline.image_semaphores[pipeline.frame_idx], VK_NULL_HANDLE, &image_idx);
+	VkResult result = vkAcquireNextImageKHR(device.logical, swapchain.handle, UINT64_MAX, work_manager.image_semaphores[work_manager.frame_idx], VK_NULL_HANDLE, &image_idx);
 	if(result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		TOS_rebuild_swapchain(&context, &device, &swapchain);
@@ -239,32 +257,32 @@ void render_tick()
 	{
 		throw std::runtime_error("TOS_draw_frame: failed to acquire image from swapchain");
 	}
-	vkResetFences(device.logical, 1, &pipeline.frame_fences[pipeline.frame_idx]);
+	vkResetFences(device.logical, 1, &work_manager.frame_fences[work_manager.frame_idx]);
 	
-	vkResetCommandBuffer(pipeline.render_command_buffers[pipeline.frame_idx], 0);
+	vkResetCommandBuffer(work_manager.render_command_buffers[work_manager.frame_idx], 0);
 	record_render_commands(image_idx);
 	
 	VkSubmitInfo submission {};
 	submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submission.commandBufferCount = 1;
-	submission.pCommandBuffers = &pipeline.render_command_buffers[pipeline.frame_idx];
+	submission.pCommandBuffers = &work_manager.render_command_buffers[work_manager.frame_idx];
 	
 	submission.waitSemaphoreCount = 1;
-	submission.pWaitSemaphores = &pipeline.image_semaphores[pipeline.frame_idx];
+	submission.pWaitSemaphores = &work_manager.image_semaphores[work_manager.frame_idx];
 	VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 	submission.pWaitDstStageMask = wait_stages;
 	
 	submission.signalSemaphoreCount = 1;
-	submission.pSignalSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
+	submission.pSignalSemaphores = &work_manager.render_semaphores[work_manager.frame_idx];
 	
-	result = vkQueueSubmit(device.queues.graphics, 1, &submission, pipeline.frame_fences[pipeline.frame_idx]);
+	result = vkQueueSubmit(device.queues.graphics, 1, &submission, work_manager.frame_fences[work_manager.frame_idx]);
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("TOS_draw_frame: failed to submit command buffer");
 	
 	VkPresentInfoKHR presentation {};
 	presentation.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentation.waitSemaphoreCount = 1;
-	presentation.pWaitSemaphores = &pipeline.render_semaphores[pipeline.frame_idx];
+	presentation.pWaitSemaphores = &work_manager.render_semaphores[work_manager.frame_idx];
 	
 	presentation.swapchainCount = 1;
 	presentation.pSwapchains = &swapchain.handle;
@@ -282,7 +300,7 @@ void render_tick()
 		throw std::runtime_error("TOS_draw_frame: failed to present swapchain image");
 	}
 	
-	pipeline.frame_idx = (pipeline.frame_idx + 1) % MAX_CONCURRENT_FRAMES;
+	work_manager.frame_idx = (work_manager.frame_idx + 1) % MAX_CONCURRENT_FRAMES;
 }
 
 int main(int argc, const char * argv[])
@@ -291,12 +309,16 @@ int main(int argc, const char * argv[])
 	{
 		TOS_create_context(&context, 1280, 720, "Renderer");
 		TOS_create_device(&context, &device);
-		TOS_create_swapchain(&context, &device, &swapchain);
-
+		
+		TOS_load_mesh(&device, &mesh, "assets/meshes/viking_room.obj");
+		TOS_AABB_mesh(&device, &aabb_mesh, mesh.min, mesh.max);
+		TOS_load_mesh(&device, &transform_gizmos[0], "assets/meshes/gizmo_translate.obj");
+		TOS_load_mesh(&device, &transform_gizmos[1], "assets/meshes/gizmo_rotate.obj");
+		TOS_load_mesh(&device, &transform_gizmos[2], "assets/meshes/gizmo_scale.obj");
+		
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 			TOS_create_uniform_buffer(&device, &uniform_buffers[i]);
-		TOS_load_mesh(&device, &mesh, "assets/meshes/viking_room.obj");
-		TOS_AABB_mesh(&device, &aabb, mesh.min, mesh.max);
+
 		TOS_load_texture(&device, &textures[0], "assets/textures/viking_room.ppm");
 		TOS_load_texture(&device, &textures[1], "assets/textures/red.ppm");
 
@@ -306,13 +328,17 @@ int main(int argc, const char * argv[])
 		TOS_create_descriptor_layout(&device, &descriptor_pipeline);
 		TOS_create_descriptor_pool(&device, &descriptor_pipeline);
 		TOS_allocate_descriptor_sets(&device, &descriptor_pipeline);
+
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 		{
 			TOS_update_uniform_buffer_descriptor(&device, &descriptor_pipeline, 0, i, &uniform_buffers[i]);
 			TOS_update_image_sampler_descriptor(&device, &descriptor_pipeline, 1, i, textures);
 		}
 
+		TOS_create_swapchain(&context, &device, &swapchain);
 		TOS_create_pipeline(&device, &swapchain, &descriptor_pipeline, &pipeline);
+		TOS_create_work_manager(&device, &work_manager, MAX_CONCURRENT_FRAMES);
+
 		TOS_create_gui_context(&context, &device, &swapchain);
 
 		logic_init();
@@ -328,11 +354,14 @@ int main(int argc, const char * argv[])
 
 		TOS_destroy_gui_context();
 
+		TOS_destroy_work_manager(&device, &work_manager);
 		TOS_destroy_pipeline(&device, &pipeline);
 		TOS_destroy_descriptor_pipeline(&device, &descriptor_pipeline);
 		TOS_destroy_texture(&device, &textures[1]);
 		TOS_destroy_texture(&device, &textures[0]);
-		TOS_destroy_mesh(&device, &aabb);
+		for(int i = 0; i < 3; i++)
+			TOS_destroy_mesh(&device, &transform_gizmos[i]);	
+		TOS_destroy_mesh(&device, &aabb_mesh);
 		TOS_destroy_mesh(&device, &mesh);
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 			TOS_destroy_uniform_buffer(&device, &uniform_buffers[i]);

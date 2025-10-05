@@ -28,6 +28,12 @@ void TOS_create_input_context(TOS_context* _context)
 	glfwSetCursorPos(context->window_handle, mouse_position.x, mouse_position.y);
 }
 
+void TOS_toggle_cursor(bool state)
+{
+	cursor = state;
+	glfwSetInputMode(context->window_handle, GLFW_CURSOR, cursor ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+}
+
 void TOS_input_tick()
 {
 	for(int i = 0; i < GLFW_KEY_LAST; i++)
@@ -74,13 +80,29 @@ bool TOS_key_released(int key)
 	return !key_mask[key].first && key_mask[key].second;
 }
 
-glm::vec2 TOS_mouse_position()
+glm::vec2 TOS_mouse_position(bool normalize)
 {
+	if(normalize)
+	{
+		return glm::vec2
+		(
+			mouse_position.x / context->window_width,
+			mouse_position.y / context->window_height
+		);
+	}
 	return mouse_position;
 }
 
-glm::vec2 TOS_mouse_delta()
+glm::vec2 TOS_mouse_delta(bool normalize)
 {
+	if(normalize)
+	{
+		return glm::vec2
+		(
+			mouse_delta.x / context->window_width,
+			mouse_delta.y / context->window_height
+		);
+	}
 	return mouse_delta;
 }
 
@@ -102,10 +124,4 @@ bool TOS_mouse_pressed()
 bool TOS_mouse_released()
 {
 	return !mouse_mask[GLFW_MOUSE_BUTTON_1].first && mouse_mask[GLFW_MOUSE_BUTTON_1].second;
-}
-
-void TOS_toggle_cursor(bool state)
-{
-	cursor = state;
-	//glfwSetInputMode(context->window_handle, GLFW_CURSOR, cursor ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
 }

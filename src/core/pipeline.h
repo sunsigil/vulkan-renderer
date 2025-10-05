@@ -53,15 +53,20 @@ struct TOS_graphics_pipeline
 {
 	VkPipelineLayout pipeline_layout;
 	VkPipeline pipeline;
-
-	VkCommandBuffer render_command_buffers[MAX_CONCURRENT_FRAMES];
-
-	VkSemaphore image_semaphores[MAX_CONCURRENT_FRAMES];
-	VkSemaphore render_semaphores[MAX_CONCURRENT_FRAMES];
-	VkFence frame_fences[MAX_CONCURRENT_FRAMES];
-
-	uint32_t frame_idx;
 };
 
 void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_graphics_pipeline* pipeline);
 void TOS_destroy_pipeline(TOS_device* device, TOS_graphics_pipeline* pipeline);
+
+struct TOS_work_manager
+{
+	uint32_t concurrency;
+	VkCommandBuffer* render_command_buffers;
+	VkSemaphore* image_semaphores;
+	VkSemaphore* render_semaphores;
+	VkFence* frame_fences;
+	uint32_t frame_idx;
+};
+
+void TOS_create_work_manager(TOS_device* device, TOS_work_manager* manager, uint32_t concurrency);
+void TOS_destroy_work_manager(TOS_device* device, TOS_work_manager* manager);

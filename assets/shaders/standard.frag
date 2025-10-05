@@ -27,4 +27,4 @@ void main()
 {
 	float contrib = mix(1.0, wireframe(1.0, 0.0), in_wireframe);
 	out_colour = texture(textures[in_texture_idx], in_uv) * contrib;
-}
+}	

@@ -149,48 +149,10 @@ void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipe
 	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
 }
 
-VkResult create_render_command_buffers(TOS_device* device, TOS_graphics_pipeline* pipeline)
-{
-	VkCommandBufferAllocateInfo alloc_info {};
-	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	alloc_info.commandPool = device->command_pools.render;
-	alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	alloc_info.commandBufferCount = MAX_CONCURRENT_FRAMES;
-	
-	return vkAllocateCommandBuffers(device->logical, &alloc_info, pipeline->render_command_buffers);
-}
-
-VkResult create_sync_primitives(TOS_device* device, TOS_graphics_pipeline* pipeline)
-{
-	VkSemaphoreCreateInfo semaphore_info {};
-	semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	
-	VkFenceCreateInfo fence_info {};
-	fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-	
-	VkResult result = VK_SUCCESS;
-	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-	{
-		result = vkCreateSemaphore(device->logical, &semaphore_info, nullptr, &pipeline->image_semaphores[i]);
-		if(result != VK_SUCCESS)
-			return result;
-		result = vkCreateSemaphore(device->logical, &semaphore_info, nullptr, &pipeline->render_semaphores[i]);
-		if(result != VK_SUCCESS)
-			return result;
-		result = vkCreateFence(device->logical, &fence_info, nullptr, &pipeline->frame_fences[i]);
-		if(result != VK_SUCCESS)
-			return result;
-	}
-
-	return VK_SUCCESS;
-}
-
 void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_graphics_pipeline* pipeline)
-{
+{	
 	VkShaderModule vert_shader = TOS_load_shader(device, "build/assets/shaders/standard.vert.spv");
 	VkShaderModule frag_shader = TOS_load_shader(device, "build/assets/shaders/standard.frag.spv");
-	
 	VkPipelineShaderStageCreateInfo vert_shader_stage_info {};
 	vert_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vert_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -201,7 +163,8 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	frag_shader_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	frag_shader_stage_info.module = frag_shader;
 	frag_shader_stage_info.pName = "main";
-	
+	VkPipelineShaderStageCreateInfo shader_stages[] = {vert_shader_stage_info, frag_shader_stage_info};
+
 	VkPipelineVertexInputStateCreateInfo vertex_input_info {};
 	vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	
@@ -310,8 +273,6 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("TOS_create_pipeline: failed to create pipeline layout");
 	
-	VkPipelineShaderStageCreateInfo shader_stages[] = {vert_shader_stage_info, frag_shader_stage_info};
-	
 	std::vector<VkDynamicState> dynamic_states =
 	{
 		VK_DYNAMIC_STATE_VIEWPORT,
@@ -346,26 +307,78 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	
 	vkDestroyShaderModule(device->logical, vert_shader, nullptr);
 	vkDestroyShaderModule(device->logical, frag_shader, nullptr);
-
-	result = create_render_command_buffers(device, pipeline);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("TOS_create_pipeline: failed to create render command buffers");
-
-	result = create_sync_primitives(device, pipeline);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("TOS_create_pipeline: failed to create sync primitives");
-
-	pipeline->frame_idx = 0;
 }
 
 void TOS_destroy_pipeline(TOS_device* device, TOS_graphics_pipeline* pipeline)
 {
-	for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
-	{
-		vkDestroyFence(device->logical, pipeline->frame_fences[i], nullptr);
-		vkDestroySemaphore(device->logical,  pipeline->render_semaphores[i], nullptr);
-		vkDestroySemaphore(device->logical,  pipeline->image_semaphores[i], nullptr);
-	}
+	
 	vkDestroyPipeline(device->logical, pipeline->pipeline, nullptr);
 	vkDestroyPipelineLayout(device->logical, pipeline->pipeline_layout, nullptr);
+}
+
+VkResult create_render_command_buffers(TOS_device* device, TOS_work_manager* manager)
+{
+	VkCommandBufferAllocateInfo alloc_info {};
+	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	alloc_info.commandPool = device->command_pools.render;
+	alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	alloc_info.commandBufferCount = manager->concurrency;
+	
+	return vkAllocateCommandBuffers(device->logical, &alloc_info, manager->render_command_buffers);
+}
+
+VkResult create_sync_primitives(TOS_device* device, TOS_work_manager* manager)
+{
+	VkSemaphoreCreateInfo semaphore_info {};
+	semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	
+	VkFenceCreateInfo fence_info {};
+	fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	
+	VkResult result = VK_SUCCESS;
+	for(int i = 0; i < manager->concurrency; i++)
+	{
+		result = vkCreateSemaphore(device->logical, &semaphore_info, nullptr, &manager->image_semaphores[i]);
+		if(result != VK_SUCCESS)
+			return result;
+		result = vkCreateSemaphore(device->logical, &semaphore_info, nullptr, &manager->render_semaphores[i]);
+		if(result != VK_SUCCESS)
+			return result;
+		result = vkCreateFence(device->logical, &fence_info, nullptr, &manager->frame_fences[i]);
+		if(result != VK_SUCCESS)
+			return result;
+	}
+
+	return VK_SUCCESS;
+}
+
+void TOS_create_work_manager(TOS_device* device, TOS_work_manager* manager, uint32_t concurrency)
+{
+	manager->concurrency = concurrency;
+	manager->render_command_buffers = new VkCommandBuffer[concurrency];
+	manager->image_semaphores = new VkSemaphore[concurrency];
+	manager->render_semaphores = new VkSemaphore[concurrency];
+	manager->frame_fences = new VkFence[concurrency];
+
+	VkResult result = create_render_command_buffers(device, manager);
+	if(result != VK_SUCCESS)
+		throw std::runtime_error("TOS_create_work_manager: failed to create render command buffers");
+	result = create_sync_primitives(device, manager);
+	if(result != VK_SUCCESS)
+		throw std::runtime_error("TOS_create_work_manager: failed to create sync primitives");
+	manager->frame_idx = 0;
+}
+
+void TOS_destroy_work_manager(TOS_device* device, TOS_work_manager* manager)
+{
+	for(int i = 0; i < manager->concurrency; i++)
+	{
+		vkDestroyFence(device->logical, manager->frame_fences[i], nullptr);
+		vkDestroySemaphore(device->logical,  manager->render_semaphores[i], nullptr);
+		vkDestroySemaphore(device->logical,  manager->image_semaphores[i], nullptr);
+	}
+	delete[] manager->frame_fences;
+	delete[] manager->render_semaphores;
+	delete[] manager->image_semaphores;
 }
