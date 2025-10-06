@@ -31,7 +31,7 @@ struct TOS_push_constant
 	float wireframe;
 };
 
-struct TOS_descriptor_pipeline
+struct TOS_descriptors
 {
 	uint32_t concurrency;
 	std::vector<VkDescriptorSetLayoutBinding> bindings;
@@ -40,23 +40,37 @@ struct TOS_descriptor_pipeline
 	std::vector<VkDescriptorSet> sets;
 };
 
-void TOS_create_descriptor_pipeline(TOS_descriptor_pipeline* pipeline, uint32_t concurrency);
-void TOS_destroy_descriptor_pipeline(TOS_device* device, TOS_descriptor_pipeline* pipeline);
-void TOS_register_descriptor_binding(TOS_descriptor_pipeline* pipeline, VkDescriptorType type, VkShaderStageFlagBits stages);
-void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptor_pipeline* pipeline);
-void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pipeline);
-void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptor_pipeline* pipeline);
-void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer);
-void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture);
+void TOS_create_descriptors(TOS_descriptors* pipeline, uint32_t concurrency);
+void TOS_destroy_descriptors(TOS_device* device, TOS_descriptors* pipeline);
+void TOS_register_descriptor_binding(TOS_descriptors* pipeline, VkDescriptorType type, VkShaderStageFlagBits stages);
+void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptors* pipeline);
+void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptors* pipeline);
+void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptors* pipeline);
+void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptors* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer);
+void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptors* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture);
 
-struct TOS_graphics_pipeline
+struct TOS_pipeline_specification
+{
+	const char* vert_path;
+	const char* frag_path;
+	VkPrimitiveTopology topology;
+	VkPolygonMode polygon_mode;
+	VkCompareOp depth_compare_op;
+};
+
+struct TOS_pipeline
 {
 	VkPipelineLayout pipeline_layout;
 	VkPipeline pipeline;
 };
 
-void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_graphics_pipeline* pipeline);
-void TOS_destroy_pipeline(TOS_device* device, TOS_graphics_pipeline* pipeline);
+void TOS_create_pipeline
+(
+	TOS_device* device, TOS_swapchain* swapchain,
+	TOS_descriptors* descriptors, TOS_pipeline_specification specification,
+	TOS_pipeline* pipeline
+);
+void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline);
 
 struct TOS_work_manager
 {

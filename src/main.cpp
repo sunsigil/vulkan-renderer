@@ -22,14 +22,15 @@ static TOS_context context;
 static TOS_device device;
 static TOS_swapchain swapchain;
 
-static TOS_descriptor_pipeline descriptor_pipeline;
+static TOS_descriptors descriptors;
 static TOS_uniform_buffer uniform_buffers[MAX_CONCURRENT_FRAMES];
 static TOS_mesh mesh;
 static TOS_mesh aabb_mesh;
 static TOS_mesh transform_gizmos[3];
 static TOS_texture textures[MAX_TEXTURE_COUNT];
 
-static TOS_graphics_pipeline pipeline;
+static TOS_pipeline pipeline;
+static TOS_pipeline gizmo_pipeline;
 static TOS_work_manager work_manager;
 
 static TOS_camera camera;
@@ -175,8 +176,6 @@ void begin_frame(VkCommandBuffer command_buffer, uint32_t image_index)
 	render_pass_info.pClearValues = clear_values;
 	vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 	
-	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-	
 	VkViewport viewport {};
 	viewport.x = 0.0f;
 	viewport.y = 0.0f;
@@ -206,7 +205,7 @@ void draw_mesh(VkCommandBuffer command_buffer, TOS_mesh* mesh)
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &mesh->vertex_buffer, &offset);
 	vkCmdBindIndexBuffer(command_buffer, mesh->index_buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptor_pipeline.sets[work_manager.frame_idx], 0, nullptr);
+	vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline_layout, 0, 1, &descriptors.sets[work_manager.frame_idx], 0, nullptr);
 	vkCmdDrawIndexed(command_buffer, (uint32_t) mesh->indices.size(), 1, 0, 0, 0);
 }
 
@@ -214,6 +213,8 @@ void record_render_commands(uint32_t image_index)
 {
 	VkCommandBuffer command_buffer = work_manager.render_command_buffers[work_manager.frame_idx];
 	begin_frame(command_buffer, image_index);
+
+	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
 	push_constant.M = model.M();
 	push_constant.texture_idx = 0;
@@ -226,6 +227,8 @@ void record_render_commands(uint32_t image_index)
 		push_constant.wireframe = 1;
 		vkCmdPushConstants(command_buffer, pipeline.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(TOS_push_constant), &push_constant);
 		draw_mesh(command_buffer, &aabb_mesh);
+
+		vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gizmo_pipeline.pipeline);
 		draw_mesh(command_buffer, &transform_gizmos[transform_op]);
 	}
 
@@ -322,21 +325,31 @@ int main(int argc, const char * argv[])
 		TOS_load_texture(&device, &textures[0], "assets/textures/viking_room.ppm");
 		TOS_load_texture(&device, &textures[1], "assets/textures/red.ppm");
 
-		TOS_create_descriptor_pipeline(&descriptor_pipeline, MAX_CONCURRENT_FRAMES);
-		TOS_register_descriptor_binding(&descriptor_pipeline, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
-		TOS_register_descriptor_binding(&descriptor_pipeline, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
-		TOS_create_descriptor_layout(&device, &descriptor_pipeline);
-		TOS_create_descriptor_pool(&device, &descriptor_pipeline);
-		TOS_allocate_descriptor_sets(&device, &descriptor_pipeline);
+		TOS_create_descriptors(&descriptors, MAX_CONCURRENT_FRAMES);
+		TOS_register_descriptor_binding(&descriptors, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
+		TOS_register_descriptor_binding(&descriptors, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+		TOS_create_descriptor_layout(&device, &descriptors);
+		TOS_create_descriptor_pool(&device, &descriptors);
+		TOS_allocate_descriptor_sets(&device, &descriptors);
 
 		for(int i = 0; i < MAX_CONCURRENT_FRAMES; i++)
 		{
-			TOS_update_uniform_buffer_descriptor(&device, &descriptor_pipeline, 0, i, &uniform_buffers[i]);
-			TOS_update_image_sampler_descriptor(&device, &descriptor_pipeline, 1, i, textures);
+			TOS_update_uniform_buffer_descriptor(&device, &descriptors, 0, i, &uniform_buffers[i]);
+			TOS_update_image_sampler_descriptor(&device, &descriptors, 1, i, textures);
 		}
 
 		TOS_create_swapchain(&context, &device, &swapchain);
-		TOS_create_pipeline(&device, &swapchain, &descriptor_pipeline, &pipeline);
+		TOS_pipeline_specification pipeline_spec =
+		{
+			.vert_path = "build/assets/shaders/standard.vert.spv",
+			.frag_path = "build/assets/shaders/standard.frag.spv",
+			.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+			.polygon_mode = VK_POLYGON_MODE_FILL,
+			.depth_compare_op = VK_COMPARE_OP_LESS
+		};
+		TOS_create_pipeline(&device, &swapchain, &descriptors, pipeline_spec, &pipeline);
+		pipeline_spec.depth_compare_op = VK_COMPARE_OP_ALWAYS;
+		TOS_create_pipeline(&device, &swapchain, &descriptors, pipeline_spec, &gizmo_pipeline);
 		TOS_create_work_manager(&device, &work_manager, MAX_CONCURRENT_FRAMES);
 
 		TOS_create_gui_context(&context, &device, &swapchain);
@@ -355,8 +368,9 @@ int main(int argc, const char * argv[])
 		TOS_destroy_gui_context();
 
 		TOS_destroy_work_manager(&device, &work_manager);
+		TOS_destroy_pipeline(&device, &gizmo_pipeline);
 		TOS_destroy_pipeline(&device, &pipeline);
-		TOS_destroy_descriptor_pipeline(&device, &descriptor_pipeline);
+		TOS_destroy_descriptors(&device, &descriptors);
 		TOS_destroy_texture(&device, &textures[1]);
 		TOS_destroy_texture(&device, &textures[0]);
 		for(int i = 0; i < 3; i++)

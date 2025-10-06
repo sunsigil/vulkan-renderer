@@ -25,7 +25,7 @@ void TOS_destroy_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer)
 	vkDestroyBuffer(device->logical, buffer->buffer, nullptr);
 }
 
-void TOS_create_descriptor_pipeline(TOS_descriptor_pipeline* pipeline, uint32_t concurrency)
+void TOS_create_descriptors(TOS_descriptors* pipeline, uint32_t concurrency)
 {
 	pipeline->concurrency = concurrency;
 	pipeline->bindings = std::vector<VkDescriptorSetLayoutBinding>();
@@ -34,7 +34,7 @@ void TOS_create_descriptor_pipeline(TOS_descriptor_pipeline* pipeline, uint32_t 
 	pipeline->sets = std::vector<VkDescriptorSet>();
 }
 
-void TOS_register_descriptor_binding(TOS_descriptor_pipeline* pipeline, VkDescriptorType type, VkShaderStageFlagBits stages)
+void TOS_register_descriptor_binding(TOS_descriptors* pipeline, VkDescriptorType type, VkShaderStageFlagBits stages)
 {
 	VkDescriptorSetLayoutBinding binding {};
 	binding.binding = pipeline->bindings.size();
@@ -47,7 +47,7 @@ void TOS_register_descriptor_binding(TOS_descriptor_pipeline* pipeline, VkDescri
 	pipeline->sets.resize(pipeline->bindings.size());
 }
 
-void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptor_pipeline* pipeline)
+void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptors* pipeline)
 {
 	VkDescriptorSetLayoutCreateInfo create_info {};
 	create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -59,7 +59,7 @@ void TOS_create_descriptor_layout(TOS_device* device, TOS_descriptor_pipeline* p
 		throw std::runtime_error("TOS_create_descriptor_layout: failed to create descriptor set layout");
 }
 
-void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pipeline)
+void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptors* pipeline)
 {
 	std::vector<VkDescriptorPoolSize> pool_sizes = std::vector<VkDescriptorPoolSize>();
 	pool_sizes.resize(pipeline->bindings.size());
@@ -80,13 +80,13 @@ void TOS_create_descriptor_pool(TOS_device* device, TOS_descriptor_pipeline* pip
 		throw std::runtime_error("TOS_create_descriptor_pool: failed to create descriptor pool");
 }
 
-void TOS_destroy_descriptor_pipeline(TOS_device* device, TOS_descriptor_pipeline* pipeline)
+void TOS_destroy_descriptors(TOS_device* device, TOS_descriptors* pipeline)
 {
 	vkDestroyDescriptorSetLayout(device->logical, pipeline->layout, nullptr);
 	vkDestroyDescriptorPool(device->logical,  pipeline->pool, nullptr);
 }
 
-void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptor_pipeline* pipeline)
+void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptors* pipeline)
 {
 	std::vector<VkDescriptorSetLayout> layouts;
 	layouts.resize(pipeline->concurrency);
@@ -105,7 +105,7 @@ void TOS_allocate_descriptor_sets(TOS_device* device, TOS_descriptor_pipeline* p
 		throw std::runtime_error("TOS_allocate_descriptor_sets: failed to allocate descriptor sets");
 }
 
-void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer)
+void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptors* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_uniform_buffer* buffer)
 {
 	VkDescriptorBufferInfo info {};
 	info.buffer = buffer->buffer;
@@ -124,7 +124,7 @@ void TOS_update_uniform_buffer_descriptor(TOS_device* device, TOS_descriptor_pip
 	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
 }
 
-void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipeline* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture)
+void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptors* pipeline, uint32_t binding_idx, uint32_t set_idx, TOS_texture* texture)
 {
 	VkDescriptorImageInfo info[MAX_TEXTURE_COUNT];
 	for(int i = 0; i < MAX_TEXTURE_COUNT; i++)
@@ -149,10 +149,15 @@ void TOS_update_image_sampler_descriptor(TOS_device* device, TOS_descriptor_pipe
 	vkUpdateDescriptorSets(device->logical, 1, &write, 0, nullptr);
 }
 
-void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descriptor_pipeline* descriptor_pipeline, TOS_graphics_pipeline* pipeline)
+void TOS_create_pipeline
+(
+	TOS_device* device, TOS_swapchain* swapchain,
+	TOS_descriptors* descriptors, TOS_pipeline_specification specification,
+	TOS_pipeline* pipeline
+)
 {	
-	VkShaderModule vert_shader = TOS_load_shader(device, "build/assets/shaders/standard.vert.spv");
-	VkShaderModule frag_shader = TOS_load_shader(device, "build/assets/shaders/standard.frag.spv");
+	VkShaderModule vert_shader = TOS_load_shader(device, specification.vert_path);
+	VkShaderModule frag_shader = TOS_load_shader(device, specification.frag_path);
 	VkPipelineShaderStageCreateInfo vert_shader_stage_info {};
 	vert_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vert_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -177,7 +182,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_info {};
 	input_assembly_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-	input_assembly_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	input_assembly_info.topology = specification.topology;
 	input_assembly_info.primitiveRestartEnable = VK_FALSE;
 	
 	VkViewport viewport {};
@@ -212,7 +217,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	rasterization_info.depthBiasClamp = 0.0f;
 	rasterization_info.depthBiasSlopeFactor = 0.0f;
 	
-	rasterization_info.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterization_info.polygonMode = specification.polygon_mode;
 	rasterization_info.lineWidth = 1.0f;
 	
 	VkPipelineMultisampleStateCreateInfo multisample_info {};
@@ -253,7 +258,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	depth_stencil_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depth_stencil_info.depthTestEnable = VK_TRUE;
 	depth_stencil_info.depthWriteEnable = VK_TRUE;
-	depth_stencil_info.depthCompareOp = VK_COMPARE_OP_LESS;
+	depth_stencil_info.depthCompareOp = specification.depth_compare_op;
 	depth_stencil_info.depthBoundsTestEnable = VK_FALSE;
 	depth_stencil_info.stencilTestEnable = VK_FALSE;
 
@@ -265,7 +270,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	VkPipelineLayoutCreateInfo pipeline_layout_info {};
 	pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipeline_layout_info.setLayoutCount = 1;
-	pipeline_layout_info.pSetLayouts = &descriptor_pipeline->layout;
+	pipeline_layout_info.pSetLayouts = &descriptors->layout;
 	pipeline_layout_info.pushConstantRangeCount = 1;
 	pipeline_layout_info.pPushConstantRanges = &push_constant_range;
 	
@@ -309,7 +314,7 @@ void TOS_create_pipeline(TOS_device* device, TOS_swapchain* swapchain, TOS_descr
 	vkDestroyShaderModule(device->logical, frag_shader, nullptr);
 }
 
-void TOS_destroy_pipeline(TOS_device* device, TOS_graphics_pipeline* pipeline)
+void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline)
 {
 	
 	vkDestroyPipeline(device->logical, pipeline->pipeline, nullptr);
