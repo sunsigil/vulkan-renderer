@@ -24,7 +24,7 @@ struct TOS_uniform_buffer
 void TOS_create_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
 void TOS_destroy_uniform_buffer(TOS_device* device, TOS_uniform_buffer* buffer);
 
-struct TOS_push_constant
+struct TOS_push_constants
 {
 	glm::mat4 M;
 	int texture_idx;

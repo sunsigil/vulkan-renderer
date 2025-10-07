@@ -34,6 +34,8 @@ target_sources(main PRIVATE
 	src/camera.cpp
 	src/transform.cpp
 	src/geometry.cpp
+	src/gizmos.cpp
+	src/draw.cpp
 
 	src/imgui/imgui_demo.cpp
 	src/imgui/imgui_draw.cpp

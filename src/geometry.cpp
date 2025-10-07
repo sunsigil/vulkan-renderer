@@ -1,3 +1,6 @@
+// Many routines here are taken from the book
+// Real-Time Collision Detection, by Christer Ericson.
+
 #include "geometry.h"
 
 #include "cowtools.h"
@@ -55,7 +58,14 @@ TOS_ray TOS_ray::arrow(glm::vec3 origin, glm::vec3 arrow)
 	};
 }
 
-// Real Time Collision Detection, Christer Ericson
+TOS_plane TOS_plane::three_points(glm::vec3 a, glm::vec3 b, glm::vec3 c)
+{
+	TOS_plane p;
+	p.normal = glm::normalize(glm::cross(b-a, c-a));
+	p.d = glm::dot(p.normal, a);
+	return p;
+}
+
 static int intersect_ray_AABB(glm::vec3 p, glm::vec3 d, TOS_AABB a, float& tmin, glm::vec3& q)
 {
 	tmin = 0.0f;
@@ -160,4 +170,116 @@ std::optional<TOS_raycast_hit> TOS_ray_OBB_intersect(TOS_ray ray, TOS_AABB aabb,
 		};
 	}
 	return hit;
+}
+
+int intersect_segment_plane(glm::vec3 a, glm::vec3 b, TOS_plane p, float& t, glm::vec3& q)
+{
+	glm::vec3 ab = b-a;
+	t = (p.d - glm::dot(p.normal, a)) / glm::dot(p.normal, ab);
+	if(t >= 0 && t <= 1)
+	{
+		q = a + t * ab;
+		return 1;
+	}
+	return 0;
+}
+
+std::optional<TOS_raycast_hit> TOS_ray_plane_intersect(TOS_ray ray, TOS_plane plane)
+{
+	std::optional<TOS_raycast_hit> hit;
+	float t;
+	glm::vec3 q;
+	if(intersect_segment_plane(ray.origin, ray.direction * ray.t, plane, t, q))
+	{
+		hit = TOS_raycast_hit
+		{
+			.point = q,
+			.normal = plane.normal
+		};
+	}
+	return hit;
+}
+
+float closest_pt_segment_segment(glm::vec3 p1, glm::vec3 q1, glm::vec3 p2, glm::vec3 q2, float& s, float& t, glm::vec3& c1, glm::vec3& c2)
+{
+	glm::vec3 d1 = q1-p1;
+	glm::vec3 d2 = q2-p2;
+	glm::vec3 r = p1-p2;
+	float a = glm::dot(d1, d1);
+	float e = glm::dot(d2, d2);
+	float f = glm::dot(d2, r);
+
+	if(a <= FLT_EPSILON && e <= FLT_EPSILON)
+	{
+		s = t = 0.0f;
+		c1 = p1;
+		c2 = p2;
+		return glm::dot(c1-c2, c1-c2);
+	}
+
+	if(a <= FLT_EPSILON)
+	{
+		s = 0.0f;
+		t = f / e;
+		t = glm::clamp(t, 0.0f, 1.0f);
+	}
+	else
+	{
+		float c = glm::dot(d1, r);
+		if(e <= FLT_EPSILON)
+		{
+			t = 0.0f;
+			s = glm::clamp(-c/a, 0.0f, 1.0f);
+		}
+		else
+		{
+			float b = glm::dot(d1, d2);
+			float denom = a*e-b*b;
+
+			if(denom != 0.0f)
+			{
+				s = glm::clamp((b*f - c*e) / denom, 0.0f, 1.0f);
+			}
+			else
+			{
+				s = 0.0f;
+			}
+			t = (b*s + f) / e;
+
+			if(t < 0.0f)
+			{
+				t = 0.0f;
+				s = glm::clamp(-c/a, 0.0f, 1.0f);
+			}
+			else if(t > 1.0f)
+			{
+				t = 1.0f;
+				s = glm::clamp((b-c)/a, 0.0f, 1.0f);
+			}
+		}
+	}
+
+	c1 = p1 + d1 * s;
+	c2 = p2 + d2 * t;
+	return glm::dot(c1-c2, c1-c2);
+}
+
+float TOS_ray_segment_nearest(TOS_ray ray, TOS_segment segment, glm::vec3* ray_pt, glm::vec3* segment_pt)
+{
+	glm::vec3 _ray_pt;
+	glm::vec3 _segment_pt;
+	float s;
+	float t;
+	float dist = closest_pt_segment_segment
+	(
+		ray.origin, ray.origin + ray.direction * ray.t,
+		segment.a, segment.b,
+		s, t,
+		_ray_pt, _segment_pt
+	);
+	if(ray_pt != nullptr)
+		*ray_pt = _ray_pt;
+	if(segment_pt != nullptr)
+		*segment_pt = _segment_pt;
+	return glm::sqrt(dist);
 }

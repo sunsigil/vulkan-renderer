@@ -264,7 +264,7 @@ void TOS_create_pipeline
 
 	VkPushConstantRange push_constant_range {};
 	push_constant_range.offset = 0;
-	push_constant_range.size = sizeof(TOS_push_constant);
+	push_constant_range.size = sizeof(TOS_push_constants);
 	push_constant_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	
 	VkPipelineLayoutCreateInfo pipeline_layout_info {};

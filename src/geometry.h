@@ -14,6 +14,20 @@ struct TOS_AABB
 	TOS_AABB transform(glm::mat4 T);
 };
 
+struct TOS_plane
+{
+	static TOS_plane three_points(glm::vec3 a, glm::vec3 b, glm::vec3 c);
+
+	glm::vec3 normal;
+	float d;
+};
+
+struct TOS_segment
+{
+	glm::vec3 a;
+	glm::vec3 b;
+};
+
 struct TOS_ray
 {
 	glm::vec3 origin;
@@ -33,3 +47,5 @@ struct TOS_raycast_hit
 
 std::optional<TOS_raycast_hit> TOS_ray_AABB_intersect(TOS_ray ray, TOS_AABB aabb);
 std::optional<TOS_raycast_hit> TOS_ray_OBB_intersect(TOS_ray ray, TOS_AABB aabb, glm::mat4 T);
+std::optional<TOS_raycast_hit> TOS_ray_plane_intersect(TOS_ray ray, TOS_plane plane);
+float TOS_ray_segment_nearest(TOS_ray ray, TOS_segment segment, glm::vec3* ray_pt=nullptr, glm::vec3* segment_pt=nullptr);

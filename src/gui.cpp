@@ -4,6 +4,8 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_vulkan.h"
 
+#include "draw.h"
+
 static TOS_context* context = nullptr;
 static TOS_device* device = nullptr;
 static TOS_swapchain* swapchain = nullptr;
@@ -68,11 +70,8 @@ void TOS_destroy_gui_context()
 	vkDestroyDescriptorPool(device->logical, imgui_descriptor_pool, nullptr);
 }
 
-static VkCommandBuffer command_buffer;
-
-void TOS_gui_begin_frame(VkCommandBuffer _command_buffer)
+void TOS_gui_begin_frame()
 {
-	command_buffer = _command_buffer;
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
@@ -81,7 +80,7 @@ void TOS_gui_begin_frame(VkCommandBuffer _command_buffer)
 void TOS_gui_end_frame()
 {
 	ImGui::Render();
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), TOS_get_command_buffer());
 }
 
 void TOS_gui_begin_overlay()

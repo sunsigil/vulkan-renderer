@@ -3,6 +3,22 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
 
+enum TOS_axis
+{
+	TOS_AXIS_X,
+	TOS_AXIS_Y,
+	TOS_AXIS_Z,
+	TOS_AXIS_COUNT
+};
+
+enum TOS_transform_op
+{
+	TOS_TRANSFORM_OP_TRANSLATE,
+	TOS_TRANSFORM_OP_ROTATE,
+	TOS_TRANSFORM_OP_SCALE,
+	TOS_TRANSFORM_OP_COUNT
+};
+
 class TOS_transform
 {
 public:
