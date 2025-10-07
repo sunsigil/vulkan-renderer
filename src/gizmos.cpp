@@ -113,7 +113,18 @@ void TOS_tick_transform_gizmo()
 	else if(TOS_mouse_down() && axis.has_value())
 	{
 		get_drag_delta();
-		transform->position += drag_delta;
+		switch(transform_op)
+		{
+			case TOS_TRANSFORM_OP_TRANSLATE:
+				transform->position += drag_delta;
+			break;
+			case TOS_TRANSFORM_OP_ROTATE:
+				transform->orientation += drag_delta;
+			break;
+			case TOS_TRANSFORM_OP_SCALE:
+				transform->scale += drag_delta;
+			break;
+		}
 	}
 }
 
@@ -122,9 +133,15 @@ void TOS_draw_transform_gizmo()
 	if(!TOS_is_transform_gizmo_active())
 		return;
 	TOS_clear_depth_buffer();
+
+	glm::vec3 scale = transform->scale;
+	transform->scale = glm::vec3(1, 1, 1);
+	glm::mat4 M = transform->M();
+	transform->scale = scale;
+
 	TOS_push_constants constants =
 	{
-		.M = transform->M(),
+		.M = M,
 		.texture_idx = 2,
 		.wireframe = 0
 	};
