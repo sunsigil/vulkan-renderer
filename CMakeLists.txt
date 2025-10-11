@@ -12,6 +12,7 @@ find_package(Vulkan REQUIRED)
 target_include_directories(main PRIVATE
 	${Vulkan_INCLUDE_DIRS}
 	src/core
+	src/external
 	src)
 	
 target_sources(main PRIVATE
@@ -24,7 +25,6 @@ target_sources(main PRIVATE
 	src/core/textures.cpp
 	src/core/vertices.cpp
 
-	src/ppm/ppm.cpp
 	src/obj/obj.cpp
 	
 	src/input.cpp
@@ -37,13 +37,13 @@ target_sources(main PRIVATE
 	src/gizmos.cpp
 	src/draw.cpp
 
-	src/imgui/imgui_demo.cpp
-	src/imgui/imgui_draw.cpp
-	src/imgui/imgui_impl_glfw.cpp
-	src/imgui/imgui_impl_vulkan.cpp
-	src/imgui/imgui_tables.cpp
-	src/imgui/imgui_widgets.cpp
-	src/imgui/imgui.cpp
+	src/external/imgui/imgui_demo.cpp
+	src/external/imgui/imgui_draw.cpp
+	src/external/imgui/imgui_impl_glfw.cpp
+	src/external/imgui/imgui_impl_vulkan.cpp
+	src/external/imgui/imgui_tables.cpp
+	src/external/imgui/imgui_widgets.cpp
+	src/external/imgui/imgui.cpp
 
 	src/main.cpp)
 target_link_libraries(main m glfw Vulkan::Vulkan)

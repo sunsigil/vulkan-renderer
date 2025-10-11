@@ -1,7 +1,43 @@
 #include "textures.h"
 
 #include "memory.h"
-#include "ppm/ppm.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+void TOS_load_image_asset(TOS_image_asset* image, const char* path)
+{
+	int width, height, channels;
+	stbi_uc* pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
+	if(pixels == nullptr)
+		throw std::runtime_error("TOS_load_image: STBI failed to load image");
+	size_t size = width * height * 4;
+	*image = 
+	{
+		.width = (uint32_t) width,
+		.height = (uint32_t) height,
+		.channels = (uint32_t) channels,
+		.size = size,
+		.pixels = pixels
+	};
+}
+
+void TOS_destroy_image_asset(TOS_image_asset* image)
+{
+	stbi_image_free(image->pixels);
+}
+
+void TOS_write_image_asset(TOS_image_asset* image, const char* path)
+{
+	stbi_write_png
+	(
+		path,
+		image->width, image->height, image->channels,
+		image->pixels,
+		image->width * image->channels
+	);
+}
 
 void copy_buffer_to_image
 (
@@ -156,7 +192,7 @@ void generate_mipmaps
 	TOS_end_transfer_command_buffer(device, &command_buffer);
 }
 	
-VkResult create_sampler(TOS_device* device, TOS_texture* texture)
+VkResult create_sampler(TOS_device* device, TOS_texture* texture, int mip_levels)
 {
 	VkSamplerCreateInfo create_info {};
 	create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -178,53 +214,52 @@ VkResult create_sampler(TOS_device* device, TOS_texture* texture)
 	create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	create_info.mipLodBias = 0.0f;
 	create_info.minLod = 0.0f;
-	create_info.maxLod = (float) texture->mip_levels;
+	create_info.maxLod = (float) mip_levels;
 	
 	return vkCreateSampler(device->logical, &create_info, nullptr, &texture->sampler);
 }
 
 void TOS_load_texture(TOS_device* device, TOS_texture* texture, const char* path)
 {
-	TOS_PPM ppm;
-	TOS_PPM_load(&ppm, path);
-	texture->mip_levels = std::floor(std::log2(std::max(ppm.width, ppm.height))) + 1;
+	TOS_image_asset image;
+	TOS_load_image_asset(&image, path);
 	
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_memory;
 	TOS_create_buffer
 	(
-		device, ppm.size,
+		device, image.size,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		staging_buffer, staging_memory
 	);
-	
 	void* data;
-	vkMapMemory(device->logical, staging_memory, 0, ppm.size, 0, &data);
-	memcpy(data, ppm.pixels, ppm.size);
+	vkMapMemory(device->logical, staging_memory, 0, image.size, 0, &data);
+	memcpy(data, image.pixels, image.size);
 	vkUnmapMemory(device->logical, staging_memory);
 	
+	int mip_levels = std::floor(std::log2(std::max(image.width, image.height))) + 1;
 	TOS_create_image
 	(
 		device,
-		ppm.width, ppm.height, VK_FORMAT_R8G8B8A8_SRGB,
-		texture->mip_levels, VK_SAMPLE_COUNT_1_BIT,
+		image.width, image.height, VK_FORMAT_R8G8B8A8_SRGB,
+		mip_levels, VK_SAMPLE_COUNT_1_BIT,
 		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		texture->image, texture->memory
 	);
-	TOS_transition_image_layout(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, texture->mip_levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	copy_buffer_to_image(device, staging_buffer, texture->image, ppm.width, ppm.height);
-	generate_mipmaps(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, ppm.width, ppm.height, texture->mip_levels);
+	TOS_transition_image_layout(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, mip_levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	copy_buffer_to_image(device, staging_buffer, texture->image, image.width, image.height);
+	generate_mipmaps(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, image.width, image.height, mip_levels);
+
+	texture->view = TOS_create_image_view(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, mip_levels, VK_IMAGE_ASPECT_COLOR_BIT);
+	create_sampler(device, texture, mip_levels);
 	
 	vkFreeMemory(device->logical, staging_memory, nullptr);
 	vkDestroyBuffer(device->logical, staging_buffer, nullptr);
-	TOS_PPM_destroy(&ppm);
-	
-	texture->view = TOS_create_image_view(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, texture->mip_levels, VK_IMAGE_ASPECT_COLOR_BIT);
 
-	create_sampler(device, texture);
+	TOS_destroy_image_asset(&image);
 }
 
 void TOS_destroy_texture(TOS_device* device, TOS_texture* texture)

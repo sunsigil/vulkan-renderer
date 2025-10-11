@@ -181,9 +181,9 @@ int main(int argc, const char * argv[])
 		TOS_create_device(&context, &device);
 		TOS_create_swapchain(&context, &device, &swapchain);
 
-		TOS_load_texture(&device, &textures[0], "assets/textures/viking_room.ppm");
-		TOS_load_texture(&device, &textures[1], "assets/textures/red.ppm");
-		TOS_load_texture(&device, &textures[2], "assets/textures/gizmo.ppm");
+		TOS_load_texture(&device, &textures[0], "assets/textures/viking_room.png");
+		TOS_load_texture(&device, &textures[1], "assets/textures/red.png");
+		TOS_load_texture(&device, &textures[2], "assets/textures/gizmo.png");
 		TOS_create_drawing_context(&context, &device, &swapchain);
 
 		TOS_pipeline_specification pipeline_spec =

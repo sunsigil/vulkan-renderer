@@ -6,7 +6,6 @@
 #include "swapchain.h"
 
 #define MAX_CONCURRENT_FRAMES 2
-#define MAX_TEXTURE_COUNT 8
 
 struct TOS_UBO
 {
