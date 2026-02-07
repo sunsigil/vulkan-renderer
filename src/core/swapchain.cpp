@@ -183,7 +183,7 @@ void create_depth_image(TOS_device* device, TOS_swapchain* swapchain)
 	(
 		device,
 		swapchain->extent.width, swapchain->extent.height, format,
-		1, VK_SAMPLE_COUNT_1_BIT,
+		1,
 		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		swapchain->depth_image, swapchain->depth_memory

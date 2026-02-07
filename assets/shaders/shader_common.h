@@ -1,0 +1,1 @@
+#define TOS_SHADER_FLAG_NDC_GEOMETRY (1 << 0)

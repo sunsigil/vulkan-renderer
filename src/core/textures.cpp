@@ -6,7 +6,29 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-void TOS_load_image_asset(TOS_image_asset* image, const char* path)
+#include "cowtools.h"
+
+void TOS_create_image(TOS_image* image, int width, int height)
+{
+	width = TOS_max(0, width);
+	height = TOS_max(0, height);
+	size_t size = width * height * 4;
+
+	*image = 
+	{
+		.width = (uint32_t) width,
+		.height = (uint32_t) height,
+		.size = size,
+		.pixels = (uint8_t*) malloc(size)
+	};
+}
+
+void TOS_destroy_image(TOS_image* image)
+{
+	stbi_image_free(image->pixels);
+}
+
+void TOS_load_image(TOS_image* image, const char* path)
 {
 	int width, height, channels;
 	stbi_uc* pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
@@ -17,26 +39,46 @@ void TOS_load_image_asset(TOS_image_asset* image, const char* path)
 	{
 		.width = (uint32_t) width,
 		.height = (uint32_t) height,
-		.channels = (uint32_t) channels,
 		.size = size,
 		.pixels = pixels
 	};
 }
 
-void TOS_destroy_image_asset(TOS_image_asset* image)
-{
-	stbi_image_free(image->pixels);
-}
-
-void TOS_write_image_asset(TOS_image_asset* image, const char* path)
+void TOS_write_image(TOS_image* image, const char* path)
 {
 	stbi_write_png
 	(
 		path,
-		image->width, image->height, image->channels,
+		image->width, image->height, 4,
 		image->pixels,
-		image->width * image->channels
+		image->width * 4
 	);
+}
+
+void TOS_get_pixel(TOS_image* image, int x, int y, uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* a)
+{
+	x = TOS_clamp(x, 0, image->width-1);
+	y = TOS_clamp(y, 0, image->height-1);
+	int idx = (y * image->width + x) * 4;
+	uint8_t* px = &image->pixels[idx];
+	*r = px[0];
+	*g = px[1];
+	*b = px[2];
+	*a = px[3];
+}
+
+void TOS_set_pixel(TOS_image* image, int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+	if(x < 0 || x >= image->width)
+		return;
+	if(y < 0 || y >= image->height)
+		return;
+	int idx = (y * image->width + x) * 4;
+	uint8_t* px = &image->pixels[idx];
+	px[0] = r;
+	px[1] = g;
+	px[2] = b;
+	px[3] = a;
 }
 
 void copy_buffer_to_image
@@ -46,7 +88,8 @@ void copy_buffer_to_image
 	uint32_t width, uint32_t height
 )
 {
-	VkCommandBuffer command_buffer = TOS_begin_transfer_command_buffer(device);
+	VkCommandBuffer command_buffer = TOS_create_command_buffer(device, device->command_pools.transfer);
+	TOS_begin_command_buffer(device, command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	
 	VkBufferImageCopy copy_region {};
 	copy_region.bufferOffset = 0;
@@ -71,7 +114,8 @@ void copy_buffer_to_image
 		1, &copy_region
 	);
 	
-	TOS_end_transfer_command_buffer(device, &command_buffer);
+	TOS_end_command_buffer(device, device->queues.transfer, command_buffer);
+	TOS_destroy_command_buffer(device, device->command_pools.transfer, command_buffer);
 }
 	
 void generate_mipmaps
@@ -87,7 +131,8 @@ void generate_mipmaps
 	if(!(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
 		throw std::runtime_error("Requested mipmap format does not support linear filtering!");
 	
-	VkCommandBuffer command_buffer = TOS_begin_transfer_command_buffer(device);
+	VkCommandBuffer command_buffer = TOS_create_command_buffer(device, device->command_pools.transfer);
+	TOS_begin_command_buffer(device, command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	
 	VkImageMemoryBarrier barrier {};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -189,7 +234,8 @@ void generate_mipmaps
 		1, &barrier
 	);
 	
-	TOS_end_transfer_command_buffer(device, &command_buffer);
+	TOS_end_command_buffer(device, device->queues.transfer, command_buffer);
+	TOS_destroy_command_buffer(device, device->command_pools.transfer, command_buffer);
 }
 	
 VkResult create_sampler(TOS_device* device, TOS_texture* texture, int mip_levels)
@@ -219,47 +265,42 @@ VkResult create_sampler(TOS_device* device, TOS_texture* texture, int mip_levels
 	return vkCreateSampler(device->logical, &create_info, nullptr, &texture->sampler);
 }
 
-void TOS_load_texture(TOS_device* device, TOS_texture* texture, const char* path)
+void TOS_create_texture(TOS_device* device, TOS_texture* texture, TOS_image* image)
 {
-	TOS_image_asset image;
-	TOS_load_image_asset(&image, path);
-	
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_memory;
 	TOS_create_buffer
 	(
-		device, image.size,
+		device, image->size,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		staging_buffer, staging_memory
 	);
 	void* data;
-	vkMapMemory(device->logical, staging_memory, 0, image.size, 0, &data);
-	memcpy(data, image.pixels, image.size);
+	vkMapMemory(device->logical, staging_memory, 0, image->size, 0, &data);
+	memcpy(data, image->pixels, image->size);
 	vkUnmapMemory(device->logical, staging_memory);
 	
-	int mip_levels = std::floor(std::log2(std::max(image.width, image.height))) + 1;
+	int mip_levels = std::floor(std::log2(std::max(image->width, image->height))) + 1;
 	TOS_create_image
 	(
 		device,
-		image.width, image.height, VK_FORMAT_R8G8B8A8_SRGB,
-		mip_levels, VK_SAMPLE_COUNT_1_BIT,
+		image->width, image->height, VK_FORMAT_R8G8B8A8_SRGB,
+		mip_levels,
 		VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		texture->image, texture->memory
 	);
 	TOS_transition_image_layout(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, mip_levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	copy_buffer_to_image(device, staging_buffer, texture->image, image.width, image.height);
-	generate_mipmaps(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, image.width, image.height, mip_levels);
+	copy_buffer_to_image(device, staging_buffer, texture->image, image->width, image->height);
+	generate_mipmaps(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, image->width, image->height, mip_levels);
 
-	texture->view = TOS_create_image_view(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, mip_levels, VK_IMAGE_ASPECT_COLOR_BIT);
-	create_sampler(device, texture, mip_levels);
-	
 	vkFreeMemory(device->logical, staging_memory, nullptr);
 	vkDestroyBuffer(device->logical, staging_buffer, nullptr);
 
-	TOS_destroy_image_asset(&image);
+	texture->view = TOS_create_image_view(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, mip_levels, VK_IMAGE_ASPECT_COLOR_BIT);
+	create_sampler(device, texture, mip_levels);
 }
 
 void TOS_destroy_texture(TOS_device* device, TOS_texture* texture)
@@ -268,4 +309,38 @@ void TOS_destroy_texture(TOS_device* device, TOS_texture* texture)
 	vkDestroyImageView(device->logical, texture->view, nullptr);
 	vkFreeMemory(device->logical, texture->memory, nullptr);
 	vkDestroyImage(device->logical, texture->image, nullptr);
+}
+
+void TOS_load_texture(TOS_device* device, TOS_texture* texture, const char* path)
+{
+	TOS_image image;
+	TOS_load_image(&image, path);
+	TOS_create_texture(device, texture, &image);
+	TOS_destroy_image(&image);
+}
+
+void TOS_update_texture(TOS_device* device, TOS_texture* texture, TOS_image* image)
+{	
+	VkBuffer staging_buffer;
+	VkDeviceMemory staging_memory;
+	TOS_create_buffer
+	(
+		device, image->size,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		staging_buffer, staging_memory
+	);
+	void* data;
+	vkMapMemory(device->logical, staging_memory, 0, image->size, 0, &data);
+	memcpy(data, image->pixels, image->size);
+	vkUnmapMemory(device->logical, staging_memory);
+	
+	int mip_levels = std::floor(std::log2(std::max(image->width, image->height))) + 1;
+	TOS_transition_image_layout(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, mip_levels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	copy_buffer_to_image(device, staging_buffer, texture->image, image->width, image->height);
+	generate_mipmaps(device, texture->image, VK_FORMAT_R8G8B8A8_SRGB, image->width, image->height, mip_levels);
+
+	vkFreeMemory(device->logical, staging_memory, nullptr);
+	vkDestroyBuffer(device->logical, staging_buffer, nullptr);
 }

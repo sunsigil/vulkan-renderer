@@ -90,42 +90,6 @@ void TOS_create_buffer
 	vkBindBufferMemory(device->logical, buffer, memory, 0);
 }
 
-VkCommandBuffer TOS_begin_transfer_command_buffer(TOS_device* device)
-{
-	VkCommandBufferAllocateInfo alloc_info {};
-	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	alloc_info.commandPool = device->command_pools.transfer;
-	alloc_info.commandBufferCount = 1;
-	VkCommandBuffer command_buffer;
-	vkAllocateCommandBuffers(device->logical, &alloc_info, &command_buffer);
-	
-	VkCommandBufferBeginInfo begin_info {};
-	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(command_buffer, &begin_info);
-		
-	return command_buffer;
-}
-
-void TOS_end_transfer_command_buffer
-(
-	TOS_device* device,
-	VkCommandBuffer* buffer
-)
-{
-	vkEndCommandBuffer(*buffer);
-		
-	VkSubmitInfo submission {};
-	submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submission.commandBufferCount = 1;
-	submission.pCommandBuffers = buffer;
-	vkQueueSubmit(device->queues.transfer, 1, &submission, VK_NULL_HANDLE);
-	vkQueueWaitIdle(device->queues.transfer);
-	
-	vkFreeCommandBuffers(device->logical, device->command_pools.transfer, 1, buffer);
-}
-
 void TOS_copy_buffer
 (
 	TOS_device* device,
@@ -133,22 +97,24 @@ void TOS_copy_buffer
 	VkDeviceSize size
 )
 {
-	VkCommandBuffer command_buffer = TOS_begin_transfer_command_buffer(device);
+	VkCommandBuffer command_buffer = TOS_create_command_buffer(device, device->command_pools.transfer);
+	TOS_begin_command_buffer(device, command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	
 	VkBufferCopy copy_region {};
 	copy_region.srcOffset = 0;
 	copy_region.dstOffset = 0;
 	copy_region.size = size;
 	vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
-	
-	TOS_end_transfer_command_buffer(device, &command_buffer);
+
+	TOS_end_command_buffer(device, device->queues.transfer, command_buffer);
+	TOS_destroy_command_buffer(device, device->command_pools.transfer, command_buffer);
 }
 
 void TOS_create_image
 (
 	TOS_device* device,
 	uint32_t width, uint32_t height, VkFormat format,
-	uint32_t mip_levels, VkSampleCountFlagBits num_samples,
+	uint32_t mip_levels,
 	VkImageTiling tiling, VkImageUsageFlags usage,
 	VkMemoryPropertyFlags memory_properties,
 	VkImage& image, VkDeviceMemory& memory
@@ -237,7 +203,8 @@ void TOS_transition_image_layout
 	VkImageLayout old_layout, VkImageLayout new_layout
 )
 {
-	VkCommandBuffer command_buffer = TOS_begin_transfer_command_buffer(device);
+	VkCommandBuffer command_buffer = TOS_create_command_buffer(device, device->command_pools.transfer);
+	TOS_begin_command_buffer(device, command_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	
 	VkImageMemoryBarrier barrier {};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -276,18 +243,23 @@ void TOS_transition_image_layout
 	if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
 	{
 		barrier.srcAccessMask = 0;
-		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;	
 		src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 		dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	}
 	else if(old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 	{
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;	
 		src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	}
+	else if(old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
+		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;	
+		src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	}
 	else if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 	{
@@ -299,7 +271,7 @@ void TOS_transition_image_layout
 	}
 	else
 	{
-		throw std::runtime_error("Specified unsupported image layout transition!");
+		throw std::runtime_error("TOS_transition_image_layout: specified image layout transition not supported");
 	}
 	
 	vkCmdPipelineBarrier
@@ -312,5 +284,6 @@ void TOS_transition_image_layout
 		1, &barrier
 	);
 	
-	TOS_end_transfer_command_buffer(device, &command_buffer);
+	TOS_end_command_buffer(device, device->queues.transfer, command_buffer);
+	TOS_destroy_command_buffer(device, device->command_pools.transfer, command_buffer);
 }

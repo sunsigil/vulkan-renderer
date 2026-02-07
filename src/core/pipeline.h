@@ -28,6 +28,7 @@ struct TOS_push_constants
 	glm::mat4 M;
 	int texture_idx;
 	float wireframe;
+	uint32_t flags;
 };
 
 struct TOS_descriptors

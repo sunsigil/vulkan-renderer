@@ -66,6 +66,14 @@ TOS_plane TOS_plane::three_points(glm::vec3 a, glm::vec3 b, glm::vec3 c)
 	return p;
 }
 
+TOS_sphere TOS_sphere::center_radius(glm::vec3 center, float r)
+{
+	TOS_sphere s;
+	s.center = center;
+	s.r = r;
+	return s;
+}
+
 static int intersect_ray_AABB(glm::vec3 p, glm::vec3 d, TOS_AABB a, float& tmin, glm::vec3& q)
 {
 	tmin = 0.0f;
@@ -282,4 +290,37 @@ float TOS_ray_segment_nearest(TOS_ray ray, TOS_segment segment, glm::vec3* ray_p
 	if(segment_pt != nullptr)
 		*segment_pt = _segment_pt;
 	return glm::sqrt(dist);
+}
+
+int intersect_ray_sphere(glm::vec3 p, glm::vec3 d, TOS_sphere s, float &t, glm::vec3& q)
+{
+	glm::vec3 m = p - s.center;
+	float b = glm::dot(m, d);
+	float c = glm::dot(m, m) - s.r * s.r;
+	if(c > 0.0f && b > 0.0f)
+		return 0;
+	float discr = b*b - c;
+	if(discr < 0.0f)
+		return 0;
+	t = -b - glm::sqrt(discr);
+	if(t < 0.0f)
+		t = 0.0f;
+	q = p + t * d;
+	return 1;
+}
+
+std::optional<TOS_raycast_hit> TOS_ray_sphere_intersect(TOS_ray ray, TOS_sphere sphere)
+{
+	std::optional<TOS_raycast_hit> hit;
+	float t;
+	glm::vec3 q;
+	if(intersect_ray_sphere(ray.origin, ray.direction, sphere, t, q))
+	{
+		hit = TOS_raycast_hit
+		{
+			.point = q,
+			.normal = glm::normalize(q - sphere.center)
+		};
+	}
+	return hit;
 }

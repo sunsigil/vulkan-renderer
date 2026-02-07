@@ -95,6 +95,7 @@ void TOS_gui_begin_overlay()
 	ImGuiWindowFlags_NoTitleBar |
 	ImGuiWindowFlags_NoBringToFrontOnFocus;
 	ImGui::SetNextWindowPos(ImVec2(0, 0));
+	ImGui::SetNextWindowSize(ImVec2(context->window_width, context->window_height));
 	ImGui::Begin("IMGUI Overlay", nullptr, flags);
 }
 

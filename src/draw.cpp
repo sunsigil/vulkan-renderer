@@ -132,7 +132,7 @@ void TOS_end_frame()
 	VkSubmitInfo submission {};
 	submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submission.commandBufferCount = 1;
-	submission.pCommandBuffers = &work_manager.render_command_buffers[work_manager.frame_idx];
+	submission.pCommandBuffers = &command_buffer;
 	
 	submission.waitSemaphoreCount = 1;
 	submission.pWaitSemaphores = &work_manager.image_semaphores[work_manager.frame_idx];

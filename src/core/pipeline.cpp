@@ -174,7 +174,7 @@ void TOS_create_pipeline
 	vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	
 	VkVertexInputBindingDescription binding_description = TOS_get_vertex_binding_description();
-	std::array<VkVertexInputAttributeDescription, 2> attribute_descriptions = TOS_get_vertex_attribute_descriptions();
+	std::vector<VkVertexInputAttributeDescription> attribute_descriptions = TOS_get_vertex_attribute_descriptions();
 	vertex_input_info.vertexBindingDescriptionCount = 1;
 	vertex_input_info.pVertexBindingDescriptions = &binding_description;
 	vertex_input_info.vertexAttributeDescriptionCount = (uint32_t) attribute_descriptions.size();
@@ -316,20 +316,8 @@ void TOS_create_pipeline
 
 void TOS_destroy_pipeline(TOS_device* device, TOS_pipeline* pipeline)
 {
-	
 	vkDestroyPipeline(device->logical, pipeline->pipeline, nullptr);
 	vkDestroyPipelineLayout(device->logical, pipeline->pipeline_layout, nullptr);
-}
-
-VkResult create_render_command_buffers(TOS_device* device, TOS_work_manager* manager)
-{
-	VkCommandBufferAllocateInfo alloc_info {};
-	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	alloc_info.commandPool = device->command_pools.render;
-	alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	alloc_info.commandBufferCount = manager->concurrency;
-	
-	return vkAllocateCommandBuffers(device->logical, &alloc_info, manager->render_command_buffers);
 }
 
 VkResult create_sync_primitives(TOS_device* device, TOS_work_manager* manager)
@@ -366,12 +354,13 @@ void TOS_create_work_manager(TOS_device* device, TOS_work_manager* manager, uint
 	manager->render_semaphores = new VkSemaphore[concurrency];
 	manager->frame_fences = new VkFence[concurrency];
 
-	VkResult result = create_render_command_buffers(device, manager);
-	if(result != VK_SUCCESS)
-		throw std::runtime_error("TOS_create_work_manager: failed to create render command buffers");
-	result = create_sync_primitives(device, manager);
+	for(int i = 0; i < concurrency; i++)
+		manager->render_command_buffers[i] = TOS_create_command_buffer(device, device->command_pools.render);
+
+	VkResult result = create_sync_primitives(device, manager);
 	if(result != VK_SUCCESS)
 		throw std::runtime_error("TOS_create_work_manager: failed to create sync primitives");
+
 	manager->frame_idx = 0;
 }
 
@@ -382,7 +371,10 @@ void TOS_destroy_work_manager(TOS_device* device, TOS_work_manager* manager)
 		vkDestroyFence(device->logical, manager->frame_fences[i], nullptr);
 		vkDestroySemaphore(device->logical,  manager->render_semaphores[i], nullptr);
 		vkDestroySemaphore(device->logical,  manager->image_semaphores[i], nullptr);
+
+		TOS_destroy_command_buffer(device, device->command_pools.render, manager->render_command_buffers[i]);
 	}
+	
 	delete[] manager->frame_fences;
 	delete[] manager->render_semaphores;
 	delete[] manager->image_semaphores;

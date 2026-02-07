@@ -9,6 +9,8 @@ struct TOS_vertex
 {
 	glm::vec3 position;
 	glm::vec2 uv;
+	glm::vec3 normal;
+	uint32_t material_idx;
 	
 	bool operator==(const TOS_vertex& other) const;
 };
@@ -27,7 +29,7 @@ namespace std
 }
 
 VkVertexInputBindingDescription TOS_get_vertex_binding_description();
-std::array<VkVertexInputAttributeDescription, 2> TOS_get_vertex_attribute_descriptions();
+std::vector<VkVertexInputAttributeDescription> TOS_get_vertex_attribute_descriptions();
 
 struct TOS_mesh
 {
@@ -47,3 +49,4 @@ void TOS_create_mesh(TOS_device* device, TOS_mesh* mesh, std::vector<TOS_vertex>
 void TOS_destroy_mesh(TOS_device* device, TOS_mesh* mesh);
 void TOS_load_mesh(TOS_device* device, TOS_mesh* mesh, const char* path);
 void TOS_AABB_mesh(TOS_device* device, TOS_mesh* mesh, glm::vec3 min, glm::vec3 max);
+void TOS_screen_mesh(TOS_device* device, TOS_mesh* mesh);

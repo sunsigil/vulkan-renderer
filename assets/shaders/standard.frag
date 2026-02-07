@@ -1,11 +1,18 @@
 #version 450
 #extension GL_EXT_fragment_shader_barycentric  : require
+#extension GL_ARB_shading_language_include : require
+
+#include "shader_common.h"
 
 layout(binding = 1) uniform sampler2D textures[8];
 
 layout(location = 0) in vec2 in_uv;
-layout(location = 1) in float in_wireframe;
-layout(location = 2) flat in int in_texture_idx;
+layout(location = 1) in vec3 in_normal;
+layout(location = 2) flat in uint in_material_idx;
+
+layout(location = 3) in float in_wireframe;
+layout(location = 4) flat in int in_texture_idx;
+layout(location = 5) flat in uint in_flags;
 
 layout(location = 0) out vec4 out_colour;
 
@@ -25,6 +32,17 @@ float wireframe(in float thickness, in float falloff)
 
 void main()
 {
-	float contrib = mix(1.0, wireframe(1.0, 0.0), in_wireframe);
-	out_colour = texture(textures[in_texture_idx], in_uv) * contrib;
+	vec4 c = texture(textures[in_texture_idx], in_uv);
+
+	if(length(in_normal) > 0)
+	{
+		vec3 n = normalize(in_normal);
+		vec3 l = normalize(vec3(-1, 1, -1));
+		float D = dot(n, l);
+		c.rgb *= D;
+	}
+
+	float alpha = mix(1.0, wireframe(1.0, 0.0), in_wireframe);
+	c.a *= alpha;
+	out_colour = c;
 }	

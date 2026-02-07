@@ -48,3 +48,8 @@ struct TOS_device
 
 void TOS_create_device(TOS_context* context, TOS_device* device);
 void TOS_destroy_device(TOS_context* context, TOS_device* device);
+
+VkCommandBuffer TOS_create_command_buffer(TOS_device* device, VkCommandPool pool);
+void TOS_destroy_command_buffer(TOS_device* device, VkCommandPool pool, VkCommandBuffer buffer);
+void TOS_begin_command_buffer(TOS_device* device, VkCommandBuffer buffer, VkCommandBufferUsageFlags flags=0);
+void TOS_end_command_buffer(TOS_device* device, VkQueue queue, VkCommandBuffer buffer);

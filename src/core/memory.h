@@ -21,16 +21,13 @@ void TOS_create_buffer
 	VkBuffer& buffer, VkDeviceMemory& memory
 );
 
-VkCommandBuffer TOS_begin_transfer_command_buffer(TOS_device* device);
-void TOS_end_transfer_command_buffer(TOS_device* device, VkCommandBuffer* buffer);
-
 void TOS_copy_buffer(TOS_device* device, VkBuffer src, VkBuffer dst, VkDeviceSize size);
 
 void TOS_create_image
 (
 	TOS_device* device,
 	uint32_t width, uint32_t height, VkFormat format,
-	uint32_t mip_levels, VkSampleCountFlagBits num_samples,
+	uint32_t mip_levels,
 	VkImageTiling tiling, VkImageUsageFlags usage,
 	VkMemoryPropertyFlags memory_properties,
 	VkImage& image, VkDeviceMemory& memory

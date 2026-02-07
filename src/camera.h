@@ -28,4 +28,8 @@ public:
 	glm::mat4 P();
 	TOS_ray viewport_ray(float x, float y);
 	void tick();
+private:
+	glm::mat4 P_cached;
+	glm::mat4 P_inv_cached;
+	glm::mat4 R;
 };

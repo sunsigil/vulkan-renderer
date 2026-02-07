@@ -13,6 +13,7 @@ target_include_directories(main PRIVATE
 	${Vulkan_INCLUDE_DIRS}
 	src/core
 	src/external
+	assets/shaders
 	src)
 	
 target_sources(main PRIVATE

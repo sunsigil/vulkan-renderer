@@ -38,6 +38,14 @@ struct TOS_ray
 	static TOS_ray arrow(glm::vec3 origin, glm::vec3 arrow);
 };
 
+struct TOS_sphere
+{
+	glm::vec3 center;
+	float r;
+
+	static TOS_sphere center_radius(glm::vec3 center, float r);
+};
+
 struct TOS_raycast_hit
 {
 	glm::vec3 point;
@@ -49,3 +57,4 @@ std::optional<TOS_raycast_hit> TOS_ray_AABB_intersect(TOS_ray ray, TOS_AABB aabb
 std::optional<TOS_raycast_hit> TOS_ray_OBB_intersect(TOS_ray ray, TOS_AABB aabb, glm::mat4 T);
 std::optional<TOS_raycast_hit> TOS_ray_plane_intersect(TOS_ray ray, TOS_plane plane);
 float TOS_ray_segment_nearest(TOS_ray ray, TOS_segment segment, glm::vec3* ray_pt=nullptr, glm::vec3* segment_pt=nullptr);
+std::optional<TOS_raycast_hit> TOS_ray_sphere_intersect(TOS_ray ray, TOS_sphere sphere);

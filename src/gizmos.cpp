@@ -102,10 +102,7 @@ void get_drag_delta()
 }
 
 void TOS_tick_transform_gizmo()
-{
-	if(!TOS_is_transform_gizmo_active())
-		return;
-	
+{	
 	if(TOS_mouse_pressed())
 	{
 		get_axis();
@@ -130,8 +127,6 @@ void TOS_tick_transform_gizmo()
 
 void TOS_draw_transform_gizmo()
 {
-	if(!TOS_is_transform_gizmo_active())
-		return;
 	TOS_clear_depth_buffer();
 
 	glm::vec3 scale = transform->scale;

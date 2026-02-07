@@ -246,3 +246,40 @@ void TOS_destroy_device(TOS_context* context, TOS_device* device)
 	vkDestroyCommandPool(device->logical, device->command_pools.transfer, nullptr);
 	vkDestroyDevice(device->logical, nullptr);
 }
+
+VkCommandBuffer TOS_create_command_buffer(TOS_device* device, VkCommandPool pool)
+{
+	VkCommandBufferAllocateInfo alloc_info {};
+	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	alloc_info.commandPool = pool;
+	alloc_info.commandBufferCount = 1;
+	VkCommandBuffer command_buffer;
+	vkAllocateCommandBuffers(device->logical, &alloc_info, &command_buffer);
+	return command_buffer;
+}
+
+void TOS_destroy_command_buffer(TOS_device* device, VkCommandPool pool, VkCommandBuffer buffer)
+{
+	vkFreeCommandBuffers(device->logical, pool, 1, &buffer);
+}
+
+void TOS_begin_command_buffer(TOS_device* device, VkCommandBuffer buffer, VkCommandBufferUsageFlags flags)
+{
+	VkCommandBufferBeginInfo begin_info {};
+	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	begin_info.flags = flags;
+	begin_info.pInheritanceInfo = nullptr;
+	vkBeginCommandBuffer(buffer, &begin_info);
+}
+
+void TOS_end_command_buffer(TOS_device* device, VkQueue queue, VkCommandBuffer buffer)
+{
+	vkEndCommandBuffer(buffer);
+	VkSubmitInfo submission {};
+	submission.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submission.commandBufferCount = 1;
+	submission.pCommandBuffers = &buffer;
+	vkQueueSubmit(queue, 1, &submission, VK_NULL_HANDLE);
+	vkQueueWaitIdle(queue);
+}
